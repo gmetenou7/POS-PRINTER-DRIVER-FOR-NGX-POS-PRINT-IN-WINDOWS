@@ -153,12 +153,50 @@ pos-printer-driver-installer/
 - **[WinUSB](https://docs.microsoft.com/en-us/windows-hardware/drivers/usbcon/winusb)** - Driver USB générique de Microsoft
 - **PowerShell** - Script d'automatisation
 
-## Lien avec ngx-pos-print
+## When do you need this tool?
 
-Cet outil est conçu pour fonctionner avec [ngx-pos-print](https://www.npmjs.com/package/ngx-pos-print), une bibliothèque Angular pour l'impression POS thermique via WebUSB/Bluetooth.
+> **This tool is for Windows only.** macOS, Linux, and Android do not need it.
 
-```bash
-npm install ngx-pos-print
+On **macOS** and **Android**, WebUSB works out of the box — no driver change is needed. On **Linux**, a simple udev rule is enough (see the [ngx-pos-print docs](https://github.com/gmetenou7/NGX-POS-PRINT#linux-setup-for-usb)).
+
+This tool is only needed if **all three** conditions are true:
+1. You are on **Windows** (10 or 11)
+2. Your printer is connected via **USB**
+3. You want to use **WebUSB** (via [ngx-pos-print](https://github.com/gmetenou7/NGX-POS-PRINT) or any other WebUSB library)
+
+If you use Bluetooth, Network, or the browser print dialog — you **don't need this tool**, even on Windows.
+
+## Ecosystem
+
+This project is the **Windows companion** of [ngx-pos-print](https://github.com/gmetenou7/NGX-POS-PRINT), an Angular library for POS thermal printing.
+
+| Project | What it does | When you need it |
+|---------|-------------|-----------------|
+| **[ngx-pos-print](https://github.com/gmetenou7/NGX-POS-PRINT)** | Angular library — sends ESC/POS commands to thermal printers via USB, Bluetooth, Network, or browser print | **Always** — install it in your Angular app with `npm install ngx-pos-print` |
+| **[POS Printer Driver Installer](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS)** | One-click Windows installer — replaces `usbprint.sys` with WinUSB so that WebUSB can access the printer | **Only on Windows + USB** |
+
+```
+                        ┌─────────────────────────────────┐
+                        │        Your Angular App          │
+                        └──────────────┬──────────────────┘
+                                       │
+                                       ▼
+                        ┌─────────────────────────────────┐
+                        │         ngx-pos-print            │
+                        │  (npm install ngx-pos-print)     │
+                        └──┬──────┬──────────┬──────────┘
+                           │      │          │       │
+                         USB  Bluetooth  Network  Browser
+                           │      │          │       │
+                           ▼      ▼          ▼       ▼
+                       Printer  Printer   Printer  OS Dialog
+                           ▲
+                           │
+              ┌────────────┴─────────────┐
+              │  POS Printer Driver       │
+              │  Installer (Windows only) │  <── you are here
+              │  Run once per printer     │
+              └──────────────────────────┘
 ```
 
 ## Contributing
