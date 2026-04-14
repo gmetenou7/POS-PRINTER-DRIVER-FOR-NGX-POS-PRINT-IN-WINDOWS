@@ -161,6 +161,14 @@ Cet outil est conçu pour fonctionner avec [ngx-pos-print](https://www.npmjs.com
 npm install ngx-pos-print
 ```
 
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+- Report bugs or suggest features via [Issues](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS/issues)
+- Submit improvements via [Pull Requests](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS/pulls)
+- Add your tested printer models to the compatibility table
+
 ## Licence
 
 MIT License - Libre d'utilisation et de modification.
