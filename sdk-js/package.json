@@ -1,6 +1,6 @@
 {
   "name": "@print-bridge/sdk",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "description": "Client navigateur pour Print Bridge — impression thermique universelle depuis une app web, sans dialogue Windows.",
   "type": "module",
   "main": "./index.js",
@@ -11,11 +11,18 @@
       "types": "./index.d.ts",
       "import": "./index.js",
       "default": "./index.js"
+    },
+    "./ngx-adapter": {
+      "types": "./ngx-adapter.d.ts",
+      "import": "./ngx-adapter.js",
+      "default": "./ngx-adapter.js"
     }
   },
   "files": [
     "index.js",
     "index.d.ts",
+    "ngx-adapter.js",
+    "ngx-adapter.d.ts",
     "README.md"
   ],
   "scripts": {
@@ -28,7 +35,8 @@
     "receipt-printer",
     "print-bridge",
     "webusb-alternative",
-    "browser-printing"
+    "browser-printing",
+    "ngx-pos-print"
   ],
   "author": "Print Bridge contributors",
   "license": "MIT",
