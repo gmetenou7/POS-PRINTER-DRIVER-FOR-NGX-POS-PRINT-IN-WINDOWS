@@ -13,6 +13,21 @@ Desktop.ini
 *.log
 *.tmp
 
+# Go build outputs
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace
+go.work
+go.work.sum
+
 # Environment
 .env
 .env.local

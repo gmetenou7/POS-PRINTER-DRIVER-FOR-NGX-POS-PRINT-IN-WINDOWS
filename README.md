@@ -1,222 +1,203 @@
-# POS Printer Driver Installer for Windows
+# Print Bridge
 
-> **Installe automatiquement le driver WinUSB pour les imprimantes thermiques POS, permettant l'accès WebUSB sur Windows.**
+> **Agent local universel d'impression thermique pour applications web.**
+> Permet à n'importe quelle application web d'imprimer sur n'importe quelle imprimante thermique, **sans driver à modifier, sans dialogue Windows, sans configuration**.
 
-[![Version](https://img.shields.io/badge/version-4.0-blue.svg)]()
+[![Status](https://img.shields.io/badge/status-Phase%201-blue.svg)]()
 [![Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-green.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)]()
 
-## Le problème
+## Pourquoi ?
 
-Sur Windows, le driver système `usbprint.sys` prend le contrôle exclusif des imprimantes USB, ce qui **bloque l'accès WebUSB**. Les applications web comme celles utilisant [ngx-pos-print](https://www.npmjs.com/package/ngx-pos-print) ne peuvent pas communiquer directement avec l'imprimante.
+Le problème avec WebUSB et la boîte de dialogue Windows :
 
-## La solution
+- **WebUSB** ne fonctionne pas de manière fiable sur toutes les imprimantes thermiques. Il faut remplacer le driver (WinUSB) au préalable, ce qui échoue sur certains modèles. Le navigateur impose aussi un consentement utilisateur à chaque session.
+- **La boîte de dialogue d'impression Windows** ouverte par le navigateur est lente, intrusive, et rend impossible un flux d'impression silencieux (caisse, ticket, étiquette).
+- **L'identification déterministe** de l'imprimante connectée est impossible quand plusieurs périphériques sont sur les ports USB.
 
-Cet installeur remplace automatiquement le driver Windows par **WinUSB**, permettant à WebUSB d'accéder à l'imprimante. Il utilise **libwdi** (la même technologie que [Zadig](https://zadig.akeo.ie/)), garantissant une installation fiable.
+Print Bridge résout ces trois problèmes en s'intercalant entre le navigateur et l'imprimante.
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│   Logiciel de vente (navigateur Chrome/Edge)     │
+│   fetch('https://localhost:19101/print', …)      │
+└──────────────────────┬───────────────────────────┘
+                       │ HTTP + HTTPS + CORS *
+                       ▼
+┌──────────────────────────────────────────────────┐
+│       Print Bridge Agent (service Windows)       │
+│  - détection auto multi-canaux (poll + mDNS)     │
+│  - API REST locale + double serveur HTTP/HTTPS   │
+│  - cert racine privé installé dans store Windows │
+│  - envoi RAW ESC/POS sans dialogue Windows       │
+│  - builder ESC/POS riche (QR, barcode, image)    │
+└──┬──────────┬───────────┬──────────┬────────────┘
+   │          │           │          │
+ winspool   WinUSB     TCP 9100    Serial / BT
+   │          │           │          │
+   ▼          ▼           ▼          ▼
+            Imprimantes thermiques
+```
+
+## État actuel — v1.0
+
+Toutes les phases sont livrées. L'agent supporte cinq canaux de communication en parallèle, identifie automatiquement les imprimantes thermiques, et expose une API stable côté navigateur en HTTP et HTTPS.
+
+| Capacité | Statut |
+|---|---|
+| Détection des imprimantes installées dans Windows (spooler) | ✅ |
+| Identification automatique des imprimantes thermiques (DB VID:PID + heuristiques) | ✅ |
+| Impression RAW ESC/POS via `WritePrinter` (zéro dialogue Windows) | ✅ |
+| API HTTP locale (`/printers`, `/print`, `/print/text`, `/health`) | ✅ |
+| Service Windows (install / uninstall / start / stop) | ✅ |
+| Builder ESC/POS (texte, alignement, gras, cut, tiroir-caisse) | ✅ |
+| Builder ESC/POS riche — QR code, code-barres 1D, image bitmap | ✅ |
+| Backend réseau TCP 9100 + scan auto du /24 local | ✅ |
+| Découverte mDNS / Bonjour (`_pdl-datastream`, `_printer`, `_ipp`) | ✅ |
+| Backend série COM + Bluetooth SPP (via port COM virtuel) | ✅ |
+| Backend USB direct via Win32 WinUSB (pur Go, sans CGO) | ✅ |
+| Routage multi-canal automatique + déduplication | ✅ |
+| HTTPS avec certificat racine auto-généré et auto-installé Windows | ✅ |
+| Appel depuis sites HTTPS sans Mixed-Content | ✅ |
+| App tray Windows (status, test print, accès logs) | ✅ |
+| SDK npm `@print-bridge/sdk` avec types TypeScript et auto-discovery | ✅ |
+| Page HTML de démo standalone | ✅ |
+| Installeur double-cliquable (`Install.cmd` auto-élève en admin) | ✅ |
+| Script de release (ZIP autonome, ~5.9 MB) | ✅ |
 
 ## Installation
 
-### 1. Téléchargez l'installeur
+### Pré-requis
 
-Téléchargez `POS-Printer-Driver-Installer.exe` ou le dossier complet.
+- Windows 10 ou 11 (64-bit ou ARM64)
+- Imprimante installée dans Windows (Panneau de configuration > Imprimantes) — Phase 1 uniquement
 
-### 2. Branchez votre imprimante
+### Pour les utilisateurs finaux (recommandé)
 
-Connectez votre imprimante POS en USB et allumez-la.
+1. Télécharger `print-bridge-X.Y.Z-windows-amd64.zip` depuis les [releases](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS/releases)
+2. Extraire l'archive
+3. **Double-cliquer sur `Install.cmd`** — il demande les droits admin automatiquement
 
-### 3. Lancez l'installeur
+L'installeur :
+- Copie les binaires dans `C:\Program Files\PrintBridge\`
+- Enregistre le service Windows (démarrage automatique)
+- Génère un certificat racine privé et l'ajoute au store Windows (pour HTTPS sans avertissement)
+- Démarre le service et lance l'icône tray
+- Configure le tray pour démarrer à chaque login
 
-**Double-cliquez** sur `POS-Printer-Driver-Installer.exe`
+Pour désinstaller : double-cliquer sur `Uninstall.cmd`.
 
-> Alternative : vous pouvez aussi utiliser `Install-POS-Printer-Driver.bat`
+### Pour les développeurs
 
-### 4. Suivez les instructions
+```powershell
+# Compiler les deux binaires
+go build -o bin\print-bridge.exe .\cmd\agent
+go build -ldflags "-H=windowsgui" -o bin\print-bridge-tray.exe .\cmd\tray
 
-```
-========================================
-  POS Printer WinUSB Driver Installer
-        for ngx-pos-print v4.0
-       (Powered by libwdi/Zadig)
-========================================
+# Tester sans installer (console)
+.\bin\print-bridge.exe
 
-Running as Administrator.
-
-Scanning USB devices...
-
-Found 5 USB device(s):
-
-  #  | VID:PID     | Class           | Name
-  ---|-------------|-----------------|--------------------------------
-  1  | 1FC9:2016   | USB             | Printer POS-80 (NEEDS WINUSB)
-  2  | 046D:C52B   | HIDClass        | Logitech USB Receiver
-  ...
-
-Enter device number (or 'q' to quit): 1
-
-Installing WinUSB driver (this may take a moment)...
-
-========================================
-       SUCCESS! WinUSB INSTALLED
-========================================
-
-Your printer is ready for WebUSB!
+# Produire un ZIP de release stripped
+.\installer\release.ps1 -Version 0.4.0
 ```
 
-### 5. Testez
+## Utilisation depuis un navigateur
 
-1. Débranchez et rebranchez l'imprimante
-2. Ouvrez Chrome ou Edge
-3. Testez votre application WebUSB
+### Vanilla JavaScript
 
-## Fonctionnalités
+```javascript
+import { PrintBridge } from './sdk-js/print-bridge.js';
 
-- ✅ **100% automatique** - Aucune configuration manuelle requise
-- ✅ **Téléchargement automatique** - Récupère libwdi automatiquement
-- ✅ **Compatible toutes imprimantes** - Fonctionne avec n'importe quelle imprimante USB
-- ✅ **Sécurisé** - Utilise les mêmes outils que Zadig (libwdi)
-- ✅ **Réversible** - Facile à annuler si besoin
+// Auto-découverte : essaie HTTPS:19101 d'abord (pour pages HTTPS), puis HTTP:19100.
+// Cache l'URL trouvée dans sessionStorage.
+const bridge = await PrintBridge.autodiscover();
 
-## Imprimantes testées
+// Lister les imprimantes
+const printers = await bridge.listPrinters();
+console.log(printers);
 
-| Marque | Modèles |
-|--------|---------|
-| **Epson** | TM-T20, TM-T88, TM-M30 |
-| **Star Micronics** | TSP100, TSP650, mPOP |
-| **Bixolon** | SRP-330, SRP-350 |
-| **Citizen** | CT-S310, CT-S4000 |
-| **XPrinter** | XP-58, XP-80 |
-| **HPRT** | TP806, TP808 |
-| **Generiques** | POS-58, POS-80, etc. |
+// Imprimer du texte simple — l'agent ajoute ESC/POS et cut automatiquement
+await bridge.printText('Bonjour le monde !\nLigne 2');
 
-## Désinstallation / Retour en arrière
+// Imprimer du ESC/POS brut
+await bridge.printRaw(new Uint8Array([0x1B, 0x40, /* … */]));
 
-Pour restaurer le driver Windows original :
+// Cibler une imprimante précise
+await bridge.printText('Cuisine', { printerId: 'winspool-abcd1234' });
 
-1. Ouvrez le **Gestionnaire de périphériques** (`Win + X`)
-2. Trouvez votre imprimante sous "Périphériques USB universels"
-3. Clic droit → **Désinstaller l'appareil**
-4. Cochez "Supprimer le pilote"
-5. **Débranchez et rebranchez** l'imprimante
-
-Windows réinstallera automatiquement le driver original.
-
-## FAQ
-
-### L'installeur demande des droits administrateur ?
-
-Oui, l'installation de drivers Windows nécessite des privilèges administrateur. C'est normal et sécurisé.
-
-### Une fenêtre de sécurité Windows apparaît ?
-
-Cliquez sur **"Installer"**. C'est Windows qui demande confirmation pour l'installation du driver.
-
-### L'imprimante n'apparaît pas dans la liste ?
-
-- Vérifiez que l'imprimante est **allumée**
-- Vérifiez le **câble USB**
-- Essayez un **autre port USB**
-
-### WebUSB dit toujours "Access Denied" ?
-
-1. **Débranchez et rebranchez** l'imprimante
-2. **Fermez et rouvrez** le navigateur
-3. Vérifiez que vous êtes sur **HTTPS** ou **localhost**
-
-### Ça affecte mes autres imprimantes ?
-
-**Non.** Le driver WinUSB est installé uniquement pour le VID:PID spécifique de l'imprimante sélectionnée. Vos autres périphériques ne sont pas affectés.
-
-## Structure des fichiers
-
-```
-pos-printer-driver-installer/
-├── POS-Printer-Driver-Installer.exe  # ⭐ Double-cliquez ici !
-├── Install-POS-Printer-Driver.bat    # Alternative (lance le .ps1)
-├── install-driver.ps1                # Script PowerShell source
-└── README.md                         # Ce fichier
+// Ouvrir le tiroir-caisse en plus
+await bridge.printText('Total : 12,50 €', { openDrawer: true });
 ```
 
-> **Distribution** : Vous pouvez distribuer uniquement `POS-Printer-Driver-Installer.exe` (33 KB) - il contient tout le nécessaire.
+> **HTTPS sans avertissement** : à l'installation, `install.ps1` enregistre une autorité racine privée « Print Bridge Local CA » dans le store racine Windows. Les navigateurs font ensuite confiance à `https://localhost:19101` sans rien afficher. Si tu utilises le binaire sans installeur, exécute `print-bridge.exe -cmd trust-ca` en admin.
 
-## Compatibilité
+### Appel HTTP direct (fetch / axios / curl)
 
-| OS | Support |
-|----|---------|
-| Windows 11 (64-bit) | ✅ |
-| Windows 10 (64-bit) | ✅ |
-| Windows 10/11 ARM64 | ✅ |
-| Windows 7/8 | ❌ |
+```http
+POST http://127.0.0.1:19100/print
+Content-Type: application/json
 
-## Technologies utilisées
-
-- **[libwdi](https://github.com/pbatard/libwdi)** - Windows Driver Installer library
-- **[WinUSB](https://docs.microsoft.com/en-us/windows-hardware/drivers/usbcon/winusb)** - Driver USB générique de Microsoft
-- **PowerShell** - Script d'automatisation
-
-## When do you need this tool?
-
-> **This tool is for Windows only.** macOS, Linux, and Android do not need it.
-
-On **macOS** and **Android**, WebUSB works out of the box — no driver change is needed. On **Linux**, a simple udev rule is enough (see the [ngx-pos-print docs](https://github.com/gmetenou7/NGX-POS-PRINT#linux-setup-for-usb)).
-
-This tool is only needed if **all three** conditions are true:
-1. You are on **Windows** (10 or 11)
-2. Your printer is connected via **USB**
-3. You want to use **WebUSB** (via [ngx-pos-print](https://github.com/gmetenou7/NGX-POS-PRINT) or any other WebUSB library)
-
-If you use Bluetooth, Network, or the browser print dialog — you **don't need this tool**, even on Windows.
-
-## Ecosystem
-
-This project is the **Windows companion** of [ngx-pos-print](https://github.com/gmetenou7/NGX-POS-PRINT), an Angular library for POS thermal printing.
-
-| Project | What it does | When you need it |
-|---------|-------------|-----------------|
-| **[ngx-pos-print](https://github.com/gmetenou7/NGX-POS-PRINT)** | Angular library — sends ESC/POS commands to thermal printers via USB, Bluetooth, Network, or browser print | **Always** — install it in your Angular app with `npm install ngx-pos-print` |
-| **[POS Printer Driver Installer](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS)** | One-click Windows installer — replaces `usbprint.sys` with WinUSB so that WebUSB can access the printer | **Only on Windows + USB** |
-
-```
-                        ┌─────────────────────────────────┐
-                        │        Your Angular App          │
-                        └──────────────┬──────────────────┘
-                                       │
-                                       ▼
-                        ┌─────────────────────────────────┐
-                        │         ngx-pos-print            │
-                        │  (npm install ngx-pos-print)     │
-                        └──┬──────┬──────────┬──────────┘
-                           │      │          │       │
-                         USB  Bluetooth  Network  Browser
-                           │      │          │       │
-                           ▼      ▼          ▼       ▼
-                       Printer  Printer   Printer  OS Dialog
-                           ▲
-                           │
-              ┌────────────┴─────────────┐
-              │  POS Printer Driver       │
-              │  Installer (Windows only) │  <── you are here
-              │  Run once per printer     │
-              └──────────────────────────┘
+{
+  "text": "Hello\nWorld",
+  "cut": true,
+  "openDrawer": false,
+  "copies": 1
+}
 ```
 
-## Contributing
+Réponse :
+```json
+{ "ok": true, "bytes": 42, "durationMs": 73 }
+```
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+## API HTTP
 
-- Report bugs or suggest features via [Issues](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS/issues)
-- Submit improvements via [Pull Requests](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS/pulls)
-- Add your tested printer models to the compatibility table
+L'agent écoute sur deux ports :
+- **HTTP** : `http://127.0.0.1:19100` — pour les apps web servies en HTTP/localhost
+- **HTTPS** : `https://localhost:19101` — pour les apps web servies en HTTPS (Mixed Content)
+
+| Méthode | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Sonde de vie |
+| `GET` | `/printers` | Liste de toutes les imprimantes détectées |
+| `GET` | `/printers/{id}` | Détail d'une imprimante |
+| `POST` | `/print` | Soumettre un job (corps JSON `text` ou `raw` base64) |
+| `POST` | `/print/text?printerId=…` | Soumettre du texte brut (corps `text/plain`) |
+
+## Comment Print Bridge contourne le dialogue Windows
+
+Le dialogue Windows apparaît quand on imprime via **GDI** ou via `ShellExecute "print"`. Print Bridge n'appelle **jamais** ces APIs. À la place, il ouvre directement le spooler avec le type de données `RAW` :
+
+```c
+OpenPrinter(name, &h, NULL);
+StartDocPrinter(h, 1, &(DOC_INFO_1){ .pDatatype = "RAW" });
+StartPagePrinter(h);
+WritePrinter(h, escposBytes, len, &written);
+EndPagePrinter(h);
+EndDocPrinter(h);
+ClosePrinter(h);
+```
+
+Le spooler transmet les octets bruts à l'imprimante sans aucun rendu graphique ni interaction utilisateur. C'est la même technique qu'utilisent les SDK des fabricants (Epson EPS, Star CloudPRNT bridge, Bixolon Web Print SDK).
+
+## Imprimantes thermiques reconnues automatiquement
+
+La base interne reconnaît les VID USB et les noms de modèle des fabricants courants : **Epson, Star Micronics, Bixolon, Citizen, XPrinter, HPRT, SNBC, Custom, Zebra**, plus toute imprimante dont le nom contient `POS`, `Thermal`, `Receipt`, `Ticket`, `80mm`, `58mm`, etc.
+
+Si ta marque n'est pas reconnue, ajoute son VID dans `internal/printers/thermal_db.go` et ouvre une PR.
+
+## Désinstallation
+
+```powershell
+.\installer\install.ps1 -Uninstall
+```
+
+## Legacy
+
+L'ancien installeur WinUSB qui permettait WebUSB (`legacy/install-driver.ps1`) reste disponible mais déprécié. Voir [legacy/README.md](legacy/README.md).
 
 ## Licence
 
-MIT License - Libre d'utilisation et de modification.
-
-## Crédits
-
-- [libwdi](https://github.com/pbatard/libwdi) par Pete Batard
-- [Zadig](https://zadig.akeo.ie/) pour l'inspiration
-- [QMK](https://github.com/qmk/qmk_driver_installer) pour l'installeur
-
----
-
-**Développé pour la communauté POS/retail par l'équipe ngx-pos-print**
+MIT — Libre d'utilisation et de modification.
