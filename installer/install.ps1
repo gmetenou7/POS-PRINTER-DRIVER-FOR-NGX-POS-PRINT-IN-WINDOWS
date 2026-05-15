@@ -1,4 +1,4 @@
-# Print Bridge — installeur Windows (Phase 1)
+﻿# Print Bridge — installeur Windows (Phase 1)
 # - copie le binaire dans %ProgramFiles%\PrintBridge
 # - enregistre le service Windows (démarrage automatique)
 # - démarre le service

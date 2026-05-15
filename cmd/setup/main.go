@@ -14,6 +14,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"embed"
 	"fmt"
 	"io"
@@ -28,6 +29,10 @@ import (
 
 	"golang.org/x/sys/windows"
 )
+
+// utf8BOM is prepended to .ps1 files at extraction so PowerShell 5.1 reads
+// them as UTF-8 instead of falling back to the legacy ANSI code page.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
 //go:embed all:payload
 var payload embed.FS
@@ -150,6 +155,9 @@ func extractPayload() (string, error) {
 		data, err := payload.ReadFile(p)
 		if err != nil {
 			return err
+		}
+		if strings.HasSuffix(strings.ToLower(rel), ".ps1") && !bytes.HasPrefix(data, utf8BOM) {
+			data = append(utf8BOM, data...)
 		}
 		return os.WriteFile(dst, data, 0o644)
 	})
