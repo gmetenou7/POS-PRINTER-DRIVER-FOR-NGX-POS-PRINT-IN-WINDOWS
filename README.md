@@ -3,7 +3,7 @@
 > **Agent local universel d'impression thermique pour applications web.**
 > Permet à n'importe quelle application web d'imprimer sur n'importe quelle imprimante thermique, **sans driver à modifier, sans dialogue Windows, sans configuration**.
 
-[![Status](https://img.shields.io/badge/status-Phase%201-blue.svg)]()
+[![Status](https://img.shields.io/badge/status-v1.0-blue.svg)]()
 [![Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-green.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)]()
 
@@ -72,7 +72,7 @@ Toutes les phases sont livrées. L'agent supporte cinq canaux de communication e
 ### Pré-requis
 
 - Windows 10 ou 11 (64-bit ou ARM64)
-- Imprimante installée dans Windows (Panneau de configuration > Imprimantes) — Phase 1 uniquement
+- Au moins une imprimante thermique accessible par l'un des canaux supportés : USB (avec ou sans driver Windows), réseau Ethernet/Wi-Fi, port série, ou Bluetooth appairé
 
 ### Pour les utilisateurs finaux (recommandé)
 
@@ -100,7 +100,7 @@ go build -ldflags "-H=windowsgui" -o bin\print-bridge-tray.exe .\cmd\tray
 .\bin\print-bridge.exe
 
 # Produire un ZIP de release stripped
-.\installer\release.ps1 -Version 0.4.0
+.\installer\release.ps1 -Version 1.0.0
 ```
 
 ## Utilisation depuis un navigateur
@@ -108,7 +108,7 @@ go build -ldflags "-H=windowsgui" -o bin\print-bridge-tray.exe .\cmd\tray
 ### Vanilla JavaScript
 
 ```javascript
-import { PrintBridge } from './sdk-js/print-bridge.js';
+import { PrintBridge } from '@print-bridge/sdk';
 
 // Auto-découverte : essaie HTTPS:19101 d'abord (pour pages HTTPS), puis HTTP:19100.
 // Cache l'URL trouvée dans sessionStorage.
@@ -194,9 +194,7 @@ Si ta marque n'est pas reconnue, ajoute son VID dans `internal/printers/thermal_
 .\installer\install.ps1 -Uninstall
 ```
 
-## Legacy
-
-L'ancien installeur WinUSB qui permettait WebUSB (`legacy/install-driver.ps1`) reste disponible mais déprécié. Voir [legacy/README.md](legacy/README.md).
+ou double-clic sur `Uninstall.cmd` depuis l'archive de release.
 
 ## Licence
 
