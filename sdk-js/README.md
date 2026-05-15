@@ -1,94 +1,62 @@
-# @print-bridge/sdk
+# sdk-js — client navigateur pour Print Bridge
 
-> Client navigateur pour [Print Bridge](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS) — impression thermique universelle depuis une app web, sans dialogue Windows, sans WebUSB.
+> **Non publié sur npm.** Pour les apps Angular, utilise plutôt [ngx-pos-print](https://www.npmjs.com/package/ngx-pos-print) avec `driver: 'bridge'`.
 
-## Installation
+Ce dossier contient un client JavaScript autonome pour parler à l'agent Print Bridge en HTTP/HTTPS depuis un navigateur. Il est conservé ici pour :
 
-```bash
-npm install @print-bridge/sdk
+- **Tester l'agent** sans installer ngx-pos-print (voir `example.html`)
+- **Servir de référence** pour intégrer Print Bridge dans une stack non-Angular (React, Vue, vanilla)
+- **Reproduire des bugs** rapidement avec un client minimal
+
+## Utilisation rapide
+
+```html
+<script type="module">
+  import { PrintBridge } from './index.js';
+
+  const bridge = await PrintBridge.autodiscover();
+  await bridge.printText('Hello', { cut: true });
+</script>
 ```
 
-Et bien sûr, l'agent Print Bridge doit tourner sur le poste de l'utilisateur — voir le [README principal](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS).
-
-## Utilisation
-
-### Auto-découverte (recommandé)
-
-```ts
-import { PrintBridge } from '@print-bridge/sdk';
-
-const bridge = await PrintBridge.autodiscover();
-
-// Liste de toutes les imprimantes détectées
-const printers = await bridge.listPrinters();
-console.log(printers);
-
-// Impression rapide sur l'imprimante thermique par défaut
-await bridge.printText('Bonjour le monde !\nLigne 2', { cut: true });
-
-// Ouvrir le tiroir-caisse en même temps
-await bridge.printText('Total : 12,50 €', { openDrawer: true });
-
-// Cibler une imprimante précise
-await bridge.printText('Cuisine', { printerId: 'winspool-abcd1234' });
-
-// Envoyer du ESC/POS brut (pour intégrations existantes)
-await bridge.printRaw(new Uint8Array([0x1B, 0x40, 0x48, 0x69, 0x0A]));
-```
-
-### Connexion explicite
-
-```ts
-const bridge = new PrintBridge('https://localhost:19101');
-await bridge.health();
-```
+ou ouvrir directement `example.html` dans Chrome avec l'agent qui tourne sur la même machine.
 
 ## API
 
 ### `PrintBridge.autodiscover(options?)`
-
-Cherche l'agent sur HTTPS:19101 d'abord (pour pages HTTPS), puis HTTP:19100. Cache l'URL trouvée dans `sessionStorage` pour les appels suivants.
+Sonde `https://localhost:19101` puis `http://127.0.0.1:19100`. Cache l'URL trouvée dans `sessionStorage`.
 
 ### `bridge.listPrinters()`
-
-Retourne un tableau d'objets `Printer` :
-
-```ts
-{
-  id: 'winspool-1c346a7a',
-  name: 'POS-80C',
-  channel: 'winspool' | 'network' | 'libusb' | 'serial' | 'bluetooth',
-  port: 'USB001',
-  isThermal: true,
-  isDefault: true,
-  status: 'ready' | 'offline' | 'printing' | 'error' | 'paused',
-}
-```
+Retourne la liste des imprimantes détectées par l'agent.
 
 ### `bridge.printText(text, options?)`
-
-L'agent construit le flux ESC/POS et l'envoie au bon backend (spooler RAW, TCP 9100, etc.). Options :
-
-| Champ | Type | Défaut | Description |
-|---|---|---|---|
-| `printerId` | `string` | défaut système | Imprimante cible |
-| `copies` | `number` | `1` | Nombre d'exemplaires (max 10) |
-| `cut` | `boolean` | `true` | Coupe en fin de ticket |
-| `openDrawer` | `boolean` | `false` | Ouvre le tiroir-caisse (pin 2) |
+Construit ESC/POS + cut + (optionnel) `openDrawer`.
 
 ### `bridge.printRaw(bytes, options?)`
+Envoie des bytes ESC/POS bruts (Uint8Array ou array de nombres).
 
-Envoie des bytes ESC/POS bruts. Utile si tu utilises déjà une lib de construction (par exemple [escpos-buffer](https://www.npmjs.com/package/escpos-buffer)) ou si tu génères des images bitmap.
+### `bridge.printQR(data, options?)`
+QR code, options : `module` (1-16), `ecc` (`L`/`M`/`Q`/`H`).
+
+### `bridge.printBarcode(data, options?)`
+Code-barres 1D, options : `type` (`EAN13`/`CODE128`/...), `height`, `widthMul`, `hri`.
+
+### `bridge.printImage(source, options?)`
+PNG/JPEG en bitmap, accepte Blob, ArrayBuffer, Uint8Array ou base64.
 
 ## HTTPS et certificats
 
-Quand l'agent est installé via `install.ps1`, il crée une autorité racine privée « Print Bridge Local CA » et l'ajoute au store racine Windows. Les navigateurs font alors confiance à `https://localhost:19101` sans avertissement.
+L'agent crée une autorité racine privée à l'installation et l'ajoute au store racine Windows. Les navigateurs font ensuite confiance à `https://localhost:19101` sans avertissement.
 
-Si tu vois une erreur `ERR_CERT_AUTHORITY_INVALID` en console, lance en admin :
+Si tu vois `ERR_CERT_AUTHORITY_INVALID`, lance en admin :
 ```powershell
 print-bridge.exe -cmd trust-ca
 ```
 
-## Licence
+## Pour les apps Angular
 
-MIT
+Tu n'as **pas besoin** de ce fichier — ngx-pos-print 1.1.0+ inclut déjà un driver `bridge` qui parle à l'agent :
+
+```ts
+providePosPrint({ driver: 'bridge' })
+```
