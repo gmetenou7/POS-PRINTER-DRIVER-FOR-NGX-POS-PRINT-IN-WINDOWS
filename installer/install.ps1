@@ -63,6 +63,29 @@ if (-not (Test-Path $SourceExe)) {
     exit 1
 }
 
+# Si une version antérieure est installée et tourne, on doit l'arrêter
+# avant de copier par-dessus, sinon Copy-Item échoue avec
+# "Le processus ne peut pas accéder au fichier".
+$existingService = Get-Service $ServiceName -ErrorAction SilentlyContinue
+if ($existingService) {
+    Write-Host "Version précédente détectée — arrêt du service en cours..." -ForegroundColor Cyan
+    if ($existingService.Status -eq 'Running') {
+        Stop-Service $ServiceName -Force -ErrorAction SilentlyContinue
+        # Le service peut prendre une seconde à libérer ses handles
+        for ($i = 0; $i -lt 10; $i++) {
+            Start-Sleep -Milliseconds 200
+            $s = Get-Service $ServiceName -ErrorAction SilentlyContinue
+            if (-not $s -or $s.Status -eq 'Stopped') { break }
+        }
+    }
+    # Désenregistre proprement pour pouvoir recréer le service avec le nouveau binaire
+    if (Test-Path $Exe) { & $Exe -cmd uninstall 2>$null | Out-Null }
+}
+
+# Tuer la tray si elle est ouverte (sinon le .exe est verrouillé)
+Get-Process print-bridge-tray -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 300
+
 Write-Host "Installation de Print Bridge dans $InstallDir..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 Copy-Item $SourceExe $Exe -Force
@@ -71,10 +94,6 @@ if (Test-Path $SourceTray) {
 }
 
 Write-Host "Enregistrement du service Windows..." -ForegroundColor Cyan
-if (Get-Service $ServiceName -ErrorAction SilentlyContinue) {
-    Stop-Service $ServiceName -Force -ErrorAction SilentlyContinue
-    & $Exe -cmd uninstall 2>$null | Out-Null
-}
 & $Exe -cmd install
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Échec d'enregistrement du service." -ForegroundColor Red

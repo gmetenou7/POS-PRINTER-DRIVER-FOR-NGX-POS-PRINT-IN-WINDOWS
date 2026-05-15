@@ -34,6 +34,17 @@ import (
 // them as UTF-8 instead of falling back to the legacy ANSI code page.
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
+// setConsoleUTF8 switches the Windows console code page to 65001 (UTF-8)
+// so accented French strings round-trip cleanly between our process and
+// the PowerShell child. No-op on non-Windows builds.
+func setConsoleUTF8() {
+	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
+	setOutputCP := kernel32.NewProc("SetConsoleOutputCP")
+	setInputCP := kernel32.NewProc("SetConsoleCP")
+	_, _, _ = setOutputCP.Call(uintptr(65001))
+	_, _, _ = setInputCP.Call(uintptr(65001))
+}
+
 //go:embed all:payload
 var payload embed.FS
 
@@ -44,6 +55,12 @@ const banner = `
 `
 
 func main() {
+	// Make sure the console can display UTF-8 — PowerShell streams its
+	// French output as UTF-8 and the default Windows console code page
+	// (CP-850 / 1252) garbles it. setConsoleUTF8 also flips stdout so
+	// our own writes use UTF-8 consistently.
+	setConsoleUTF8()
+
 	// We always want a visible console window; bail out fast if launched
 	// in an unexpected way.
 	defer pause("Appuie sur Entrée pour fermer cette fenêtre…")
@@ -174,11 +191,17 @@ func runInstaller(workdir string) error {
 	if _, err := os.Stat(ps1); err != nil {
 		return fmt.Errorf("install.ps1 absent du payload : %w", err)
 	}
+	// Force the PowerShell child process to emit UTF-8 on its output streams.
+	// Without this, PowerShell 5.1 defaults to whatever [Console]::OutputEncoding
+	// happens to be (usually OEM 437/850) and our pipe receives mojibake.
 	cmd := exec.Command(
 		"powershell.exe",
 		"-NoProfile",
 		"-ExecutionPolicy", "Bypass",
-		"-File", ps1,
+		"-Command",
+		"[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); "+
+			"[Console]::InputEncoding = [System.Text.UTF8Encoding]::new(); "+
+			"& '"+ps1+"'",
 	)
 	cmd.Dir = workdir
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: false}
