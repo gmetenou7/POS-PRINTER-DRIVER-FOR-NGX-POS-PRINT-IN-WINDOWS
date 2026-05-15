@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Print Bridge — démonstration</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #1c1c1e; }
+    h1 { margin-bottom: 0; }
+    p.lead { color: #6b6b70; margin-top: 4px; }
+    section { border: 1px solid #e5e5ea; border-radius: 12px; padding: 16px; margin-top: 20px; }
+    button { background: #0a84ff; color: white; border: 0; padding: 10px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; }
+    button:hover { background: #006ee6; }
+    textarea { width: 100%; min-height: 100px; font-family: ui-monospace, monospace; font-size: 13px; border: 1px solid #e5e5ea; border-radius: 8px; padding: 8px; }
+    pre { background: #f5f5f7; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 12px; }
+    .status { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+    .status.ready { background: #d1f7d1; color: #1d8a1d; }
+    .status.error, .status.offline { background: #ffd9d9; color: #c1272d; }
+    .status.printing { background: #ffe9b3; color: #8a5a00; }
+    label { display: block; margin-top: 12px; font-size: 13px; color: #3c3c43; }
+    select { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #e5e5ea; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Print Bridge — démonstration</h1>
+  <p class="lead">Cette page utilise <code>@print-bridge/sdk</code> pour parler à l'agent local.</p>
+
+  <section>
+    <h2>1. Connexion</h2>
+    <p id="conn-status">Recherche de l'agent…</p>
+  </section>
+
+  <section>
+    <h2>2. Imprimantes détectées</h2>
+    <div id="printer-list">…</div>
+  </section>
+
+  <section>
+    <h2>3. Test d'impression</h2>
+    <label for="printer-select">Imprimante</label>
+    <select id="printer-select"><option>—</option></select>
+    <label for="text-input">Texte à imprimer</label>
+    <textarea id="text-input">Print Bridge
+Test d'impression
+================
+Article 1     5,00 €
+Article 2     7,50 €
+----------------
+Total        12,50 €
+
+Merci !</textarea>
+    <p>
+      <button id="print-btn">Imprimer</button>
+      <button id="print-drawer-btn" style="margin-left:8px; background:#4a4a4a;">Imprimer + ouvrir tiroir</button>
+    </p>
+    <pre id="result">—</pre>
+  </section>
+
+  <script type="module">
+    import { PrintBridge } from './index.js';
+
+    const conn = document.getElementById('conn-status');
+    const list = document.getElementById('printer-list');
+    const select = document.getElementById('printer-select');
+    const text = document.getElementById('text-input');
+    const result = document.getElementById('result');
+
+    let bridge = null;
+
+    async function refreshPrinters() {
+      const printers = await bridge.listPrinters();
+      list.innerHTML = printers.length === 0
+        ? '<p>Aucune imprimante détectée.</p>'
+        : '<ul>' + printers.map(p =>
+            `<li><strong>${p.name}</strong> [${p.channel}] ${p.isThermal ? '🖨️' : ''} ${p.isDefault ? '⭐' : ''} <span class="status ${p.status}">${p.status}</span></li>`
+          ).join('') + '</ul>';
+
+      select.innerHTML = '<option value="">(défaut)</option>' +
+        printers.map(p => `<option value="${p.id}">${p.name} — ${p.channel}</option>`).join('');
+    }
+
+    try {
+      bridge = await PrintBridge.autodiscover();
+      conn.innerHTML = `Connecté à <code>${bridge.base}</code> ✅`;
+      await refreshPrinters();
+      setInterval(refreshPrinters, 5000);
+    } catch (err) {
+      conn.innerHTML = `Agent introuvable : ${err.message}`;
+    }
+
+    async function doPrint(openDrawer) {
+      const id = select.value || undefined;
+      try {
+        const r = await bridge.printText(text.value, { printerId: id, openDrawer });
+        result.textContent = JSON.stringify(r, null, 2);
+      } catch (err) {
+        result.textContent = 'Erreur : ' + err.message;
+      }
+    }
+    document.getElementById('print-btn').onclick = () => doPrint(false);
+    document.getElementById('print-drawer-btn').onclick = () => doPrint(true);
+  </script>
+</body>
+</html>
