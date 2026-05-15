@@ -62,7 +62,7 @@ Toutes les phases sont livrées. L'agent supporte cinq canaux de communication e
 | HTTPS avec certificat racine auto-généré et auto-installé Windows | ✅ |
 | Appel depuis sites HTTPS sans Mixed-Content | ✅ |
 | App tray Windows (status, test print, accès logs) | ✅ |
-| Driver natif `'bridge'` dans [ngx-pos-print](https://www.npmjs.com/package/ngx-pos-print) v1.1.0+ | ✅ |
+| Driver natif `'bridge'` dans [ngx-pos-print](https://www.npmjs.com/package/ngx-pos-print) v1.1.1+ | ✅ |
 | Client JS standalone (non-publié) + page HTML de démo dans `sdk-js/` | ✅ |
 | Installeur double-cliquable (`Install.cmd` auto-élève en admin) | ✅ |
 | Script de release (ZIP autonome, ~5.9 MB) | ✅ |
@@ -107,8 +107,8 @@ go build -ldflags "-H=windowsgui" -o bin\print-bridge-tray.exe .\cmd\tray
 # Tester sans installer (console)
 .\bin\print-bridge.exe
 
-# Produire un ZIP de release stripped
-.\installer\release.ps1 -Version 1.0.0
+# Produire un ZIP + setup.exe de release stripped
+.\installer\release.ps1 -Version 1.0.3
 ```
 
 ## Utilisation depuis un navigateur
@@ -116,7 +116,7 @@ go build -ldflags "-H=windowsgui" -o bin\print-bridge-tray.exe .\cmd\tray
 ### Avec ngx-pos-print (recommandé pour Angular)
 
 ```bash
-npm install ngx-pos-print  # version 1.1.0 ou plus récente
+npm install ngx-pos-print  # version 1.1.1 ou plus récente
 ```
 
 ```ts
