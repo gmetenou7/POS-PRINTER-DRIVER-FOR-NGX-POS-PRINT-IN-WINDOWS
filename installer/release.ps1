@@ -1,7 +1,9 @@
 # Print Bridge — script de release.
-# Compile les deux binaires, vérifie la version, et zippe le tout pour distribution.
+# Compile les binaires, assemble le payload et produit deux livrables :
+#   1. dist\print-bridge-X.Y.Z-windows-amd64.zip  (archive classique)
+#   2. dist\PrintBridge-Setup-X.Y.Z.exe           (installeur single-EXE)
 #
-# Usage : .\installer\release.ps1 -Version 0.4.0
+# Usage : .\installer\release.ps1 -Version 1.0.0
 
 [CmdletBinding()]
 param(
@@ -10,15 +12,21 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Root      = Split-Path $PSScriptRoot -Parent
-$BinDir    = Join-Path $Root "bin"
-$DistDir   = Join-Path $Root "dist"
-$Stage     = Join-Path $DistDir "print-bridge-$Version"
-$ZipPath   = Join-Path $DistDir "print-bridge-$Version-windows-amd64.zip"
+$Root        = Split-Path $PSScriptRoot -Parent
+$BinDir      = Join-Path $Root "bin"
+$DistDir     = Join-Path $Root "dist"
+$Stage       = Join-Path $DistDir "print-bridge-$Version"
+$ZipPath     = Join-Path $DistDir "print-bridge-$Version-windows-amd64.zip"
+$SetupPath   = Join-Path $DistDir "PrintBridge-Setup-$Version.exe"
+$PayloadDir  = Join-Path $Root "cmd\setup\payload"
 
-if (Test-Path $Stage)   { Remove-Item -Recurse -Force $Stage }
-if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
+# Clean previous build
+foreach ($p in @($Stage, $ZipPath, $SetupPath)) {
+    if (Test-Path $p) { Remove-Item -Recurse -Force $p }
+}
 New-Item -ItemType Directory -Path $Stage -Force | Out-Null
+
+# --- 1) Compile the agent + tray ----------------------------------------
 
 Write-Host "Compilation de l'agent (print-bridge.exe)..." -ForegroundColor Cyan
 & go build -trimpath -ldflags "-s -w" -o (Join-Path $BinDir "print-bridge.exe") .\cmd\agent
@@ -28,7 +36,9 @@ Write-Host "Compilation du tray (print-bridge-tray.exe)..." -ForegroundColor Cya
 & go build -trimpath -ldflags "-s -w -H=windowsgui" -o (Join-Path $BinDir "print-bridge-tray.exe") .\cmd\tray
 if ($LASTEXITCODE -ne 0) { throw "Build tray échoué" }
 
-Write-Host "Assemblage du package..." -ForegroundColor Cyan
+# --- 2) Build the ZIP package -------------------------------------------
+
+Write-Host "Assemblage du ZIP..." -ForegroundColor Cyan
 Copy-Item (Join-Path $BinDir "print-bridge.exe")      (Join-Path $Stage "print-bridge.exe")
 Copy-Item (Join-Path $BinDir "print-bridge-tray.exe") (Join-Path $Stage "print-bridge-tray.exe")
 Copy-Item (Join-Path $Root "installer\install.ps1")   (Join-Path $Stage "install.ps1")
@@ -37,18 +47,47 @@ Copy-Item (Join-Path $Root "installer\Uninstall.cmd") (Join-Path $Stage "Uninsta
 Copy-Item (Join-Path $Root "README.md")               (Join-Path $Stage "README.md")
 Copy-Item (Join-Path $Root "LICENSE")                 (Join-Path $Stage "LICENSE")
 
-# Patch install.ps1 staged copy so it looks for binaries next to itself (no ..\bin)
-$staged = Join-Path $Stage "install.ps1"
-$content = Get-Content $staged -Raw
-$content = $content -replace '\$PSScriptRoot \\\.\.\\bin\\', '$PSScriptRoot\'
-Set-Content -Path $staged -Value $content -Encoding UTF8
+# install.ps1 expects either a sibling bin/ folder or sibling EXEs. The
+# zip staging puts EXEs alongside it, so the second branch already works
+# without patching.
 
-Write-Host "Création de l'archive ZIP..." -ForegroundColor Cyan
 Compress-Archive -Path "$Stage\*" -DestinationPath $ZipPath -Force
 
-$size = [math]::Round((Get-Item $ZipPath).Length / 1MB, 2)
+# --- 3) Stage the payload for the single-EXE bootstrapper ---------------
+
+Write-Host "Préparation du payload single-EXE..." -ForegroundColor Cyan
+# Clear everything in payload except .gitkeep
+Get-ChildItem $PayloadDir -Exclude ".gitkeep" -Force | Remove-Item -Recurse -Force
+Copy-Item (Join-Path $BinDir "print-bridge.exe")      (Join-Path $PayloadDir "print-bridge.exe")
+Copy-Item (Join-Path $BinDir "print-bridge-tray.exe") (Join-Path $PayloadDir "print-bridge-tray.exe")
+Copy-Item (Join-Path $Root "installer\install.ps1")   (Join-Path $PayloadDir "install.ps1")
+Copy-Item (Join-Path $Root "installer\Uninstall.cmd") (Join-Path $PayloadDir "Uninstall.cmd")
+Copy-Item (Join-Path $Root "LICENSE")                 (Join-Path $PayloadDir "LICENSE")
+
+# --- 4) Build the single-EXE installer ----------------------------------
+
+Write-Host "Compilation de l'installeur single-EXE (PrintBridge-Setup-$Version.exe)..." -ForegroundColor Cyan
+& go build -trimpath -ldflags "-s -w" -o $SetupPath .\cmd\setup
+if ($LASTEXITCODE -ne 0) { throw "Build setup échoué" }
+
+# Clean payload after embedding (the data is now inside the EXE)
+Get-ChildItem $PayloadDir -Exclude ".gitkeep" -Force | Remove-Item -Recurse -Force
+
+# Clean staging directory (already zipped)
+if (Test-Path $Stage) { Remove-Item -Recurse -Force $Stage }
+
+# --- 5) Summary ---------------------------------------------------------
+
+$zipSize   = [math]::Round((Get-Item $ZipPath).Length / 1MB, 2)
+$setupSize = [math]::Round((Get-Item $SetupPath).Length / 1MB, 2)
+
 Write-Host ""
 Write-Host "=========================================" -ForegroundColor Green
-Write-Host "  Release prête : $ZipPath" -ForegroundColor Green
-Write-Host "  Taille : $size MB" -ForegroundColor Green
+Write-Host "  Release v$Version prête." -ForegroundColor Green
+Write-Host ""
+Write-Host "  ZIP   : $ZipPath" -ForegroundColor Green
+Write-Host "          $zipSize MB" -ForegroundColor Green
+Write-Host ""
+Write-Host "  Setup : $SetupPath" -ForegroundColor Green
+Write-Host "          $setupSize MB  (double-clic pour installer)" -ForegroundColor Green
 Write-Host "=========================================" -ForegroundColor Green

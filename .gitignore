@@ -28,6 +28,10 @@ Desktop.ini
 go.work
 go.work.sum
 
+# Build payload staged for the single-EXE installer
+/cmd/setup/payload/*
+!/cmd/setup/payload/.gitkeep
+
 # Environment
 .env
 .env.local

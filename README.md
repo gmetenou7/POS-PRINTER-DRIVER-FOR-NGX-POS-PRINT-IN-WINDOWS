@@ -74,20 +74,28 @@ Toutes les phases sont livrées. L'agent supporte cinq canaux de communication e
 - Windows 10 ou 11 (64-bit ou ARM64)
 - Au moins une imprimante thermique accessible par l'un des canaux supportés : USB (avec ou sans driver Windows), réseau Ethernet/Wi-Fi, port série, ou Bluetooth appairé
 
-### Pour les utilisateurs finaux (recommandé)
+### Pour les utilisateurs finaux
 
-1. Télécharger `print-bridge-X.Y.Z-windows-amd64.zip` depuis les [releases](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS/releases)
+**Option A — Installeur single-EXE (le plus simple)**
+
+1. Télécharger `PrintBridge-Setup-X.Y.Z.exe` depuis les [releases](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS/releases)
+2. **Double-cliquer** dessus → UAC apparaît → accepter
+3. Suivre la fenêtre de progression (~5 secondes)
+
+**Option B — Archive ZIP**
+
+1. Télécharger `print-bridge-X.Y.Z-windows-amd64.zip`
 2. Extraire l'archive
-3. **Double-cliquer sur `Install.cmd`** — il demande les droits admin automatiquement
+3. Double-cliquer sur `Install.cmd` — il demande les droits admin automatiquement
 
-L'installeur :
+Dans les deux cas, l'installeur :
 - Copie les binaires dans `C:\Program Files\PrintBridge\`
 - Enregistre le service Windows (démarrage automatique)
 - Génère un certificat racine privé et l'ajoute au store Windows (pour HTTPS sans avertissement)
 - Démarre le service et lance l'icône tray
 - Configure le tray pour démarrer à chaque login
 
-Pour désinstaller : double-cliquer sur `Uninstall.cmd`.
+Pour désinstaller : double-cliquer sur `Uninstall.cmd` (présent dans `C:\Program Files\PrintBridge\` après installation, ou dans l'archive ZIP).
 
 ### Pour les développeurs
 
