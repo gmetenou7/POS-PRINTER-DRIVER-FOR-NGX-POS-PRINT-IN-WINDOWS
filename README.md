@@ -62,8 +62,8 @@ Toutes les phases sont livrées. L'agent supporte cinq canaux de communication e
 | HTTPS avec certificat racine auto-généré et auto-installé Windows | ✅ |
 | Appel depuis sites HTTPS sans Mixed-Content | ✅ |
 | App tray Windows (status, test print, accès logs) | ✅ |
-| SDK npm `@print-bridge/sdk` avec types TypeScript et auto-discovery | ✅ |
-| Page HTML de démo standalone | ✅ |
+| Driver natif `'bridge'` dans [ngx-pos-print](https://www.npmjs.com/package/ngx-pos-print) v1.1.0+ | ✅ |
+| Client JS standalone (non-publié) + page HTML de démo dans `sdk-js/` | ✅ |
 | Installeur double-cliquable (`Install.cmd` auto-élève en admin) | ✅ |
 | Script de release (ZIP autonome, ~5.9 MB) | ✅ |
 
@@ -113,31 +113,50 @@ go build -ldflags "-H=windowsgui" -o bin\print-bridge-tray.exe .\cmd\tray
 
 ## Utilisation depuis un navigateur
 
-### Vanilla JavaScript
+### Avec ngx-pos-print (recommandé pour Angular)
 
-```javascript
-import { PrintBridge } from '@print-bridge/sdk';
-
-// Auto-découverte : essaie HTTPS:19101 d'abord (pour pages HTTPS), puis HTTP:19100.
-// Cache l'URL trouvée dans sessionStorage.
-const bridge = await PrintBridge.autodiscover();
-
-// Lister les imprimantes
-const printers = await bridge.listPrinters();
-console.log(printers);
-
-// Imprimer du texte simple — l'agent ajoute ESC/POS et cut automatiquement
-await bridge.printText('Bonjour le monde !\nLigne 2');
-
-// Imprimer du ESC/POS brut
-await bridge.printRaw(new Uint8Array([0x1B, 0x40, /* … */]));
-
-// Cibler une imprimante précise
-await bridge.printText('Cuisine', { printerId: 'winspool-abcd1234' });
-
-// Ouvrir le tiroir-caisse en plus
-await bridge.printText('Total : 12,50 €', { openDrawer: true });
+```bash
+npm install ngx-pos-print  # version 1.1.0 ou plus récente
 ```
+
+```ts
+import { providePosPrint } from 'ngx-pos-print';
+
+bootstrapApplication(AppComponent, {
+  providers: [
+    providePosPrint({ driver: 'bridge', paperSize: 80 }),
+  ],
+});
+```
+
+Puis dans ton composant :
+
+```ts
+posPrint.printLines([
+  { type: 'text', content: 'MAGASIN', align: 'center', bold: true },
+  { type: 'separator' },
+  { type: 'text', content: 'Article 1 …………  5,00 €' },
+  { type: 'text', content: 'Total …………… 12,50 €', bold: true },
+  { type: 'cut' },
+]);
+```
+
+ngx-pos-print détecte automatiquement l'agent Print Bridge et route l'impression. Si l'agent n'est pas installé, fallback automatique vers les autres drivers (USB/BT/Network/Window).
+
+### Vanilla JavaScript (sans framework)
+
+Le dossier [`sdk-js/`](sdk-js/) contient un client autonome non-publié pour les apps non-Angular :
+
+```html
+<script type="module">
+  import { PrintBridge } from './sdk-js/index.js';
+
+  const bridge = await PrintBridge.autodiscover();
+  await bridge.printText('Bonjour !', { cut: true });
+</script>
+```
+
+Ouvre [`sdk-js/example.html`](sdk-js/example.html) dans Chrome pour une démo interactive.
 
 > **HTTPS sans avertissement** : à l'installation, `install.ps1` enregistre une autorité racine privée « Print Bridge Local CA » dans le store racine Windows. Les navigateurs font ensuite confiance à `https://localhost:19101` sans rien afficher. Si tu utilises le binaire sans installeur, exécute `print-bridge.exe -cmd trust-ca` en admin.
 
