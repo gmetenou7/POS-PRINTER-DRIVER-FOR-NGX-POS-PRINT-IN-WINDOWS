@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grandcat/zeroconf"
@@ -32,53 +33,56 @@ func MDNSDiscover(ctx context.Context, timeout time.Duration) []Found {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// Share a single resolver across all service types. Each zeroconf.Resolver
+	// opens IPv4+IPv6 multicast UDP sockets; creating one per service tripled
+	// the socket count and (on Windows) leaked handles between scans.
+	resolver, err := zeroconf.NewResolver(nil)
+	if err != nil {
+		return nil
+	}
+
 	resultsCh := make(chan Found, 32)
-	done := make(chan struct{})
+	var wg sync.WaitGroup
 
 	for _, svc := range mdnsServices {
-		go browseService(ctx, svc, resultsCh)
+		wg.Add(1)
+		go func(service string) {
+			defer wg.Done()
+			browseService(ctx, resolver, service, resultsCh)
+		}(svc)
 	}
+
+	// Drain on a separate goroutine so we can also collect results below.
 	go func() {
-		<-ctx.Done()
-		close(done)
+		wg.Wait()
+		close(resultsCh)
 	}()
 
 	seen := map[string]bool{}
 	var out []Found
-	for {
-		select {
-		case <-done:
-			close(resultsCh)
-			for f := range resultsCh {
-				key := fmt.Sprintf("%s:%d", f.Host, f.Port)
-				if !seen[key] {
-					seen[key] = true
-					out = append(out, f)
-				}
-			}
-			return out
-		case f := <-resultsCh:
-			key := fmt.Sprintf("%s:%d", f.Host, f.Port)
-			if !seen[key] {
-				seen[key] = true
-				out = append(out, f)
-			}
+	for f := range resultsCh {
+		key := fmt.Sprintf("%s:%d", f.Host, f.Port)
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, f)
 		}
 	}
+	return out
 }
 
-func browseService(ctx context.Context, service string, ch chan<- Found) {
-	resolver, err := zeroconf.NewResolver(nil)
-	if err != nil {
-		return
-	}
+func browseService(ctx context.Context, resolver *zeroconf.Resolver, service string, ch chan<- Found) {
 	entries := make(chan *zeroconf.ServiceEntry, 16)
+	browseDone := make(chan struct{})
 	go func() {
 		_ = resolver.Browse(ctx, service, "local.", entries)
+		close(browseDone)
 	}()
 	for {
 		select {
 		case <-ctx.Done():
+			// Wait for Browse to actually return so its sockets are released
+			// before this function exits.
+			<-browseDone
 			return
 		case e, ok := <-entries:
 			if !ok {
@@ -103,11 +107,11 @@ func browseService(ctx context.Context, service string, ch chan<- Found) {
 			if name == "" {
 				name = e.HostName
 			}
-			ch <- Found{
-				Host:     host,
-				Port:     port,
-				Source:   "mdns",
-				Hostname: name,
+			select {
+			case ch <- Found{Host: host, Port: port, Source: "mdns", Hostname: name}:
+			case <-ctx.Done():
+				<-browseDone
+				return
 			}
 		}
 	}

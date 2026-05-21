@@ -4,9 +4,59 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
+
+// Known OUIs used by Windows virtualisation stacks. Matching on MAC is more
+// robust than matching on adapter name because users rename adapters.
+var virtualMACPrefixes = []string{
+	"00:15:5d", // Microsoft Hyper-V / WSL2
+	"00:03:ff", // Microsoft virtual switch (legacy)
+	"00:50:56", // VMware
+	"00:0c:29", // VMware
+	"00:05:69", // VMware
+	"08:00:27", // VirtualBox
+	"0a:00:27", // VirtualBox host-only
+	"00:1c:42", // Parallels
+	"02:42",    // Docker bridge (locally-administered)
+}
+
+// Name substrings used by common virtual adapters when MAC-based detection
+// isn't enough (e.g. TAP/TUN adapters without a stable OUI).
+var virtualNameSubstrings = []string{
+	"vethernet",  // Hyper-V / Windows containers
+	"wsl",        // WSL adapter
+	"hyper-v",
+	"vmware",
+	"virtualbox",
+	"vbox",
+	"docker",
+	"tailscale",
+	"tap-",       // OpenVPN TAP
+	"tun",        // generic tunnel
+	"loopback",
+	"bluetooth",
+}
+
+func isVirtualInterface(ifc net.Interface) bool {
+	if len(ifc.HardwareAddr) >= 3 {
+		mac := strings.ToLower(ifc.HardwareAddr.String())
+		for _, p := range virtualMACPrefixes {
+			if strings.HasPrefix(mac, p) {
+				return true
+			}
+		}
+	}
+	name := strings.ToLower(ifc.Name)
+	for _, s := range virtualNameSubstrings {
+		if strings.Contains(name, s) {
+			return true
+		}
+	}
+	return false
+}
 
 // Found is one network printer candidate.
 type Found struct {
@@ -83,6 +133,12 @@ func buildScanTargets() []string {
 
 	for _, ifc := range ifaces {
 		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		// Skip virtual adapters (Hyper-V, WSL, Docker, VMware, VirtualBox,
+		// VPN tunnels). They never lead to a real LAN-attached printer and
+		// each one adds ~254 IPs × 350ms of probing per scan.
+		if isVirtualInterface(ifc) {
 			continue
 		}
 		addrs, err := ifc.Addrs()

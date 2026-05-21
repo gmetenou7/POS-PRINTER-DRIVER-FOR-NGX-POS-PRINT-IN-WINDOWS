@@ -17,7 +17,7 @@ func Default() *Config {
 		HTTPSPort:      19101,
 		BindAddr:       "127.0.0.1",
 		AllowedOrigins: []string{"*"},
-		DetectInterval: 5,
+		DetectInterval: 30,
 		LogToFile:      true,
 		LogPath:        defaultLogPath(),
 		CertDir:        defaultCertDir(),
