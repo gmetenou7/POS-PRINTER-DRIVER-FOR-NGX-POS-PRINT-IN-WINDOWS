@@ -6,7 +6,9 @@
 //	GET  /health                       — liveness
 //	GET  /printers                     — list detected printers
 //	GET  /printers/{id}                — single printer
+//	GET  /printers/{id}/capabilities   — what the printer's driver can do
 //	POST /print                        — submit a print job (JSON body)
+//	POST /print-document               — print rendered pages (A4 and the like)
 //	POST /print/text                   — submit plain text, server builds ESC/POS
 //
 // CORS is open by default because the agent only listens on localhost.
@@ -26,6 +28,7 @@ import (
 
 	"github.com/gmetenou7/print-bridge/internal/config"
 	"github.com/gmetenou7/print-bridge/internal/escpos"
+	"github.com/gmetenou7/print-bridge/internal/backends/winspool"
 	"github.com/gmetenou7/print-bridge/internal/printers"
 )
 
@@ -48,6 +51,7 @@ func NewServer(cfg *config.Config, reg *printers.Registry, doPrint PrintFunc) *S
 	mux.HandleFunc("/printers", s.handlePrinters)
 	mux.HandleFunc("/printers/", s.handlePrinterByID)
 	mux.HandleFunc("/print", s.handlePrint)
+	mux.HandleFunc("/print-document", s.handlePrintDocument)
 	mux.HandleFunc("/print/text", s.handlePrintText)
 	mux.HandleFunc("/", s.handleRoot)
 	s.handler = withCORS(cfg.AllowedOrigins, mux)
@@ -115,7 +119,8 @@ func (s *Server) handlePrinterByID(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusMethodNotAllowed, "GET only")
 		return
 	}
-	id := strings.TrimPrefix(r.URL.Path, "/printers/")
+	path := strings.TrimPrefix(r.URL.Path, "/printers/")
+	id, resource, _ := strings.Cut(path, "/")
 	if id == "" {
 		writeErr(w, http.StatusBadRequest, "id manquant")
 		return
@@ -125,7 +130,40 @@ func (s *Server) handlePrinterByID(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "imprimante introuvable")
 		return
 	}
+	if resource == "capabilities" {
+		s.writeCapabilities(w, p)
+		return
+	}
 	writeJSON(w, http.StatusOK, p)
+}
+
+// writeCapabilities rend ce que le pilote de l'imprimante déclare savoir faire.
+//
+// C'est la même source que la fenêtre de réglages de Windows, et c'est tout l'intérêt : une
+// application web peut enfin n'offrir que des options réelles, au lieu d'en proposer que la
+// machine remplacera en silence.
+//
+// Seules les imprimantes installées dans Windows ont un pilote à interroger. Une thermique
+// branchée en USB brut, en série ou par le réseau n'en a pas : on rend alors une réponse vide
+// plutôt qu'une erreur, parce que l'absence d'options est une réponse valable pour elle.
+func (s *Server) writeCapabilities(w http.ResponseWriter, p printers.Printer) {
+	if p.Channel != printers.ChannelWinspool {
+		writeJSON(w, http.StatusOK, capabilitiesResponse{OK: true, Driverless: true})
+		return
+	}
+	caps, err := winspool.Capabilities(p.Name)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, capabilitiesResponse{OK: true, Caps: &caps})
+}
+
+type capabilitiesResponse struct {
+	OK bool `json:"ok"`
+	// Vrai quand l'imprimante n'a pas de pilote Windows à interroger : rien à proposer.
+	Driverless bool           `json:"driverless,omitempty"`
+	Caps       *winspool.Caps `json:"capabilities,omitempty"`
 }
 
 // printRequest is the JSON body accepted by POST /print. Either `raw` (base64),
@@ -208,6 +246,130 @@ func (s *Server) handlePrintText(w http.ResponseWriter, r *http.Request) {
 	}
 	data := escpos.PlainText(string(body), true)
 	s.dispatch(w, r.URL.Query().Get("printerId"), data, 1)
+}
+
+// handlePrintDocument imprime un document de page : facture A4, bon, étiquette de format.
+//
+// <h4>Pourquoi des images, et non le PDF</h4>
+//
+// L'appelant envoie ses pages déjà rendues. Celui qui imprime affiche presque toujours un
+// aperçu avant, donc ce rendu existe déjà chez lui, et le refaire ici obligerait à embarquer un
+// moteur PDF dans l'agent, donc du C, donc la fin du binaire unique qui s'installe sans rien
+// d'autre. La contrepartie est assumée : ce qui sort est une image de la page, pas du texte
+// vectoriel. Sur du papier, la différence ne se voit pas à 200 points par pouce.
+//
+// Les options partent dans le DEVMODE du pilote, jamais dans une fenêtre : c'est là toute la
+// raison d'être de cet agent.
+func (s *Server) handlePrintDocument(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var req documentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "JSON invalide : "+err.Error())
+		return
+	}
+	if len(req.Pages) == 0 {
+		writeErr(w, http.StatusBadRequest, "aucune page")
+		return
+	}
+
+	printer, ok := s.pick(req.PrinterID)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "imprimante introuvable : "+req.PrinterID)
+		return
+	}
+	if printer.Channel != printers.ChannelWinspool {
+		// Une thermique ou une matricielle ne se pilote pas ainsi : elle attend son flux
+		// d'octets, pas une page rendue. Le dire franchement plutôt que sortir du charabia.
+		writeErr(w, http.StatusUnprocessableEntity,
+			"cette imprimante n'accepte pas de document de page : utilisez /print")
+		return
+	}
+
+	pages := make([][]byte, 0, len(req.Pages))
+	for i, encoded := range req.Pages {
+		raw, err := base64.StdEncoding.DecodeString(stripDataURL(encoded))
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, fmt.Sprintf("page %d illisible : %v", i+1, err))
+			return
+		}
+		pages = append(pages, raw)
+	}
+
+	name := req.JobName
+	if name == "" {
+		name = "Document"
+	}
+
+	start := time.Now()
+	printed, err := winspool.PrintDocument(printer.Name, name, pages, req.Options.toBackend())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, printers.PrintResult{
+			OK:       false,
+			Duration: time.Since(start).Milliseconds(),
+			Error:    err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, documentResult{
+		OK:       true,
+		Pages:    printed,
+		Duration: time.Since(start).Milliseconds(),
+	})
+}
+
+type documentRequest struct {
+	PrinterID string          `json:"printerId,omitempty"`
+	JobName   string          `json:"jobName,omitempty"`
+	// Une image par page, en base64. Le préfixe d'une URL de données est toléré : c'est ce que
+	// rend `canvas.toDataURL()`, et l'appelant ne devrait pas avoir à le retirer lui-même.
+	Pages   []string        `json:"pages"`
+	Options documentOptions `json:"options,omitempty"`
+}
+
+type documentOptions struct {
+	Copies    int    `json:"copies,omitempty"`
+	Color     *bool  `json:"color,omitempty"`
+	Duplex    string `json:"duplex,omitempty"` // "none" | "long" | "short"
+	Bin       int    `json:"bin,omitempty"`
+	Paper     int    `json:"paper,omitempty"`
+	Landscape *bool  `json:"landscape,omitempty"`
+}
+
+func (o documentOptions) toBackend() winspool.DocOptions {
+	return winspool.DocOptions{
+		Copies:    o.Copies,
+		Color:     o.Color,
+		Duplex:    o.Duplex,
+		Bin:       o.Bin,
+		Paper:     o.Paper,
+		Landscape: o.Landscape,
+	}
+}
+
+type documentResult struct {
+	OK       bool   `json:"ok"`
+	Pages    int    `json:"pages"`
+	Duration int64  `json:"durationMs,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+// pick retient l'imprimante demandée, ou celle par défaut quand aucune n'est nommée.
+func (s *Server) pick(printerID string) (printers.Printer, bool) {
+	if printerID != "" {
+		return s.reg.Get(printerID)
+	}
+	return s.reg.PickDefault()
+}
+
+// stripDataURL retire l'en-tête « data:image/png;base64, » que rend une toile de navigateur.
+func stripDataURL(value string) string {
+	if i := strings.Index(value, ";base64,"); i >= 0 {
+		return value[i+len(";base64,"):]
+	}
+	return value
 }
 
 func (s *Server) dispatch(w http.ResponseWriter, printerID string, data []byte, copies int) {

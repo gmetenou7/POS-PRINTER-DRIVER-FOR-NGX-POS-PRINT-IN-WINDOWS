@@ -97,6 +97,43 @@ export class PrintBridge {
     return this._post('/print', { printerId, raw: b64, copies });
   }
 
+  /**
+   * Read what a printer's driver says it can do: papers, trays, duplex, color, copies.
+   *
+   * Same source as the system's own settings window, so your page can offer exactly the
+   * options the machine honours instead of some it will silently replace.
+   *
+   * Resolves to null for a printer with no host driver to query, a receipt printer on raw USB
+   * for instance: it has no options to offer, and that is an answer rather than a failure.
+   */
+  async capabilities(printerId) {
+    const r = await fetch(`${this.base}/printers/${encodeURIComponent(printerId)}/capabilities`);
+    if (!r.ok) return null;
+    const body = await r.json();
+    if (!body.ok || body.driverless || !body.capabilities) return null;
+    return body.capabilities;
+  }
+
+  /**
+   * Print a page document: an invoice, a delivery note, anything meant for a sheet of paper.
+   *
+   * Pages go out already rendered, one image each. Whoever prints usually shows a preview
+   * first, so that rendering already exists on your side; doing it again in the agent would
+   * mean embedding a PDF engine in it, and losing the single self-contained executable.
+   *
+   * No dialog opens: the options travel in the driver's own settings structure.
+   *
+   * @param pages one image per page, base64 or a `data:` URL straight from a canvas
+   */
+  async printDocument(pages, { printerId, jobName, copies, color, duplex, bin, paper, landscape } = {}) {
+    return this._post('/print-document', {
+      printerId,
+      jobName,
+      pages,
+      options: { copies, color, duplex, bin, paper, landscape },
+    });
+  }
+
   /** Print a QR code. `data` is any string (URL, text, etc.). */
   async printQR(data, { printerId, module = 6, ecc = 'M', cut = true } = {}) {
     return this._post('/print', { printerId, qr: { data, module, ecc }, cut });

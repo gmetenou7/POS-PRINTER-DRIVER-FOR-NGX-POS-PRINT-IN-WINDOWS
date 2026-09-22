@@ -59,6 +59,47 @@ export interface PrintTextOptions {
   openDrawer?: boolean;
 }
 
+/** One setting offered by the driver: its number, and the name it shows under. */
+export interface PrinterOption {
+  id: number;
+  name: string;
+}
+
+/** What a printer's driver declares it can do. */
+export interface PrinterCapabilities {
+  papers: PrinterOption[];
+  bins: PrinterOption[];
+  duplex: boolean;
+  color: boolean;
+  maxCopies: number;
+  /** Resolution and printable area, to render pages at the right size. */
+  dpi: number;
+  widthPx: number;
+  heightPx: number;
+}
+
+/** Options for a page document, as they will reach the driver. */
+export interface DocumentOptions {
+  printerId?: string;
+  jobName?: string;
+  copies?: number;
+  color?: boolean;
+  duplex?: 'none' | 'long' | 'short';
+  /** Tray number, taken from `PrinterCapabilities.bins`. */
+  bin?: number;
+  /** Paper number, taken from `PrinterCapabilities.papers`. */
+  paper?: number;
+  landscape?: boolean;
+}
+
+export interface DocumentResult {
+  ok: boolean;
+  /** Pages actually handed to the driver. */
+  pages: number;
+  durationMs?: number;
+  error?: string;
+}
+
 export interface PrintRawOptions {
   printerId?: string;
   copies?: number;
@@ -137,6 +178,15 @@ export declare class PrintBridge {
 
   /** Print plain text. The agent wraps it in ESC/POS and cuts by default. */
   printText(text: string, options?: PrintTextOptions): Promise<PrintResult>;
+
+  /** Read what a printer's driver can do. Null when it has no driver to query. */
+  capabilities(printerId: string): Promise<PrinterCapabilities | null>;
+
+  /** Print a page document, one already-rendered image per page. No dialog opens. */
+  printDocument(
+    pages: string[],
+    options?: DocumentOptions,
+  ): Promise<DocumentResult>;
 
   /** Send raw ESC/POS bytes (Uint8Array or number[]). */
   printRaw(

@@ -51,6 +51,8 @@ Toutes les phases sont livrées. L'agent supporte cinq canaux de communication e
 | Identification automatique des imprimantes thermiques (DB VID:PID + heuristiques) | ✅ |
 | Impression RAW ESC/POS via `WritePrinter` (zéro dialogue Windows) | ✅ |
 | API HTTP locale (`/printers`, `/print`, `/print/text`, `/health`) | ✅ |
+| Documents de page A4 sans dialogue Windows (`/print-document`) | ✅ |
+| Lecture des capacités du pilote (`/printers/{id}/capabilities`) | ✅ |
 | Service Windows (install / uninstall / start / stop) | ✅ |
 | Builder ESC/POS (texte, alignement, gras, cut, tiroir-caisse) | ✅ |
 | Builder ESC/POS riche — QR code, code-barres 1D, image bitmap | ✅ |
@@ -190,8 +192,61 @@ L'agent écoute sur deux ports :
 | `GET` | `/health` | Sonde de vie |
 | `GET` | `/printers` | Liste de toutes les imprimantes détectées |
 | `GET` | `/printers/{id}` | Détail d'une imprimante |
+| `GET` | `/printers/{id}/capabilities` | Ce que le pilote sait faire : formats, bacs, recto-verso, couleur, copies |
 | `POST` | `/print` | Soumettre un job (corps JSON `text` ou `raw` base64) |
 | `POST` | `/print/text?printerId=…` | Soumettre du texte brut (corps `text/plain`) |
+| `POST` | `/print-document` | Imprimer un document de page (A4 et assimilés), pages déjà rendues |
+
+### Documents de page : remplacer la fenêtre d'impression
+
+Les deux routes ci-dessus existent pour une raison précise : permettre à une application web de
+**se passer entièrement du dialogue d'impression du système**, y compris pour une facture A4.
+
+`GET /printers/{id}/capabilities` lit le pilote installé dans Windows et rend ce qu'il déclare
+savoir faire.
+
+```json
+{
+  "ok": true,
+  "capabilities": {
+    "papers": [{ "id": 9, "name": "A4" }, { "id": 1, "name": "Letter" }],
+    "bins":   [{ "id": 1, "name": "Bac 1" }, { "id": 4, "name": "Bac manuel" }],
+    "duplex": true, "color": true, "maxCopies": 99,
+    "dpi": 600, "widthPx": 4958, "heightPx": 7016
+  }
+}
+```
+
+C'est la même source que la fenêtre de réglages du pilote. Une application peut donc n'offrir
+que des options réelles, au lieu d'en proposer que la machine remplacera sans rien dire. Une
+imprimante sans pilote hôte, une thermique en USB brut par exemple, rend `"driverless": true`
+et aucune capacité : elle n'a pas d'options à offrir, et c'est une réponse, pas une panne.
+
+`POST /print-document` imprime, sans qu'aucune fenêtre ne s'ouvre.
+
+```json
+{
+  "printerId": "…",
+  "jobName": "FAC-2026-000123",
+  "pages": ["data:image/png;base64,…", "…"],
+  "options": { "copies": 2, "color": false, "duplex": "long", "bin": 1, "paper": 9 }
+}
+```
+
+**Les pages arrivent déjà rendues, une image chacune.** Celui qui imprime affiche presque
+toujours un aperçu avant, donc ce rendu existe déjà chez lui. Le refaire ici obligerait à
+embarquer un moteur PDF dans l'agent, donc du C, donc la fin du binaire unique qui s'installe
+sans rien d'autre. La contrepartie est assumée : ce qui sort est une image de la page, pas du
+texte vectoriel. Sur du papier, à 200 points par pouce, la différence ne se voit pas.
+
+Les options partent dans le `DEVMODE` du pilote, via `CreateDC` puis `StartDoc` : le chemin
+qu'emprunte n'importe quelle application qui imprime, à ceci près qu'aucune fenêtre n'est
+ouverte. Le pilote relit et corrige ce qui n'a pas de sens pour lui, un recto-verso sur un
+modèle qui n'en a pas par exemple.
+
+Une imprimante qui n'est pas pilotée par l'hôte (`channel` autre que `winspool`) refuse cette
+route avec un 422 : elle attend son flux d'octets, pas une page rendue. C'est `/print` qui la
+sert.
 
 ## Comment Print Bridge contourne le dialogue Windows
 
