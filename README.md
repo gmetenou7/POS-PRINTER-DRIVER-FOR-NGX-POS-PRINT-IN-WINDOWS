@@ -1,10 +1,13 @@
 # Print Bridge
 
-> **Agent local universel d'impression thermique pour applications web.**
-> Permet à n'importe quelle application web d'imprimer sur n'importe quelle imprimante thermique, **sans driver à modifier, sans dialogue Windows, sans configuration**.
+> **Agent local d'impression pour applications web.**
+> Permet à n'importe quelle application web d'imprimer sur n'importe quelle imprimante, thermique
+> par flux ESC/POS ou de bureau par pages rendues, **sans driver à modifier, sans dialogue
+> système, sans configuration**.
 
-[![Status](https://img.shields.io/badge/status-v1.0-blue.svg)]()
+[![Status](https://img.shields.io/badge/status-v1.1-blue.svg)]()
 [![Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-green.svg)]()
+[![Linux](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20(CUPS)-green.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)]()
 
 ## Pourquoi ?
@@ -68,13 +71,22 @@ Toutes les phases sont livrées. L'agent supporte cinq canaux de communication e
 | Client JS standalone (non-publié) + page HTML de démo dans `sdk-js/` | ✅ |
 | Installeur double-cliquable (`Install.cmd` auto-élève en admin) | ✅ |
 | Script de release (ZIP autonome, ~5.9 MB) | ✅ |
+| Impression de documents sous Linux et macOS via CUPS (`lp`, `lpstat`, `lpoptions`) | ✅ |
+| Lecture des capacités du pilote sous CUPS (formats, bacs, recto-verso, couleur) | ✅ |
+| Chaque appel au système borné dans le temps (6 s en lecture, 60 s à l'impression) | ✅ |
 
 ## Installation
 
 ### Pré-requis
 
-- Windows 10 ou 11 (64-bit ou ARM64)
-- Au moins une imprimante thermique accessible par l'un des canaux supportés : USB (avec ou sans driver Windows), réseau Ethernet/Wi-Fi, port série, ou Bluetooth appairé
+- **Windows 10 ou 11** (64-bit ou ARM64), pour le service, l'installeur et l'icône de zone de
+  notification. C'est le parcours complet, et celui que décrit le reste de cette page.
+- **Linux ou macOS** conviennent aussi, avec CUPS, présent par défaut sur les deux. L'agent s'y
+  lance à la main ou en service du système ; il n'y a ni installeur ni icône de zone de
+  notification, l'API et le comportement sont les mêmes.
+- Au moins une imprimante accessible par l'un des canaux supportés : USB (avec ou sans driver),
+  réseau Ethernet/Wi-Fi, port série, ou Bluetooth appairé. Une imprimante de bureau installée
+  dans le système convient également, pour les documents de page.
 
 ### Pour les utilisateurs finaux
 
@@ -202,8 +214,8 @@ L'agent écoute sur deux ports :
 Les deux routes ci-dessus existent pour une raison précise : permettre à une application web de
 **se passer entièrement du dialogue d'impression du système**, y compris pour une facture A4.
 
-`GET /printers/{id}/capabilities` lit le pilote installé dans Windows et rend ce qu'il déclare
-savoir faire.
+`GET /printers/{id}/capabilities` interroge le pilote installé sur la machine, le spooler sous
+Windows et CUPS ailleurs, et rend ce qu'il déclare savoir faire.
 
 ```json
 {
@@ -221,6 +233,11 @@ C'est la même source que la fenêtre de réglages du pilote. Une application pe
 que des options réelles, au lieu d'en proposer que la machine remplacera sans rien dire. Une
 imprimante sans pilote hôte, une thermique en USB brut par exemple, rend `"driverless": true`
 et aucune capacité : elle n'a pas d'options à offrir, et c'est une réponse, pas une panne.
+
+**`papers` et `bins` sont toujours des listes, jamais `null`.** Une imprimante qui n'annonce
+aucun format rend `[]`. La distinction n'est pas cosmétique : un `null` traversait l'API sous
+forme de liste absente, et le code appelant qui comptait ses éléments plantait au milieu de son
+rendu, laissant une fenêtre de sélection vide sans le moindre message.
 
 `POST /print-document` imprime, sans qu'aucune fenêtre ne s'ouvre.
 
@@ -247,6 +264,38 @@ modèle qui n'en a pas par exemple.
 Une imprimante qui n'est pas pilotée par l'hôte (`channel` autre que `winspool`) refuse cette
 route avec un 422 : elle attend son flux d'octets, pas une page rendue. C'est `/print` qui la
 sert.
+
+### Linux et macOS : le même contrat, par CUPS
+
+Le dépôt porte « IN WINDOWS » dans son nom parce que c'est le système où l'absence de solution
+faisait le plus mal. L'agent tourne aussi sous Linux et macOS, et la même application web y
+retrouve la même API, sans rien changer chez elle.
+
+Là où Windows passe par le spooler, ces systèmes passent par **CUPS**, qui est déjà installé
+partout :
+
+| Ce qu'il faut | Commande appelée |
+|---|---|
+| Lister les imprimantes | `lpstat -p`, puis `lpstat -v` et `lpstat -d` pour le canal et celle par défaut |
+| Lire les capacités | `lpoptions -p <file> -l` |
+| Imprimer une page rendue | `lp` avec `-o fit-to-page` |
+| Imprimer un flux ESC/POS | `lp -o raw` |
+
+Les options voyagent traduites, parce que CUPS raisonne en mots-clés là où Windows raisonne en
+numéros : la couleur devient `print-color-mode=color` ou `monochrome`, le recto-verso devient
+`sides=two-sided-long-edge` ou `short-edge`, le format devient `media=A4` et le bac
+`InputSlot=<mot-clé>`.
+
+**Ce que la machine ne sait pas faire n'est pas proposé.** Une HP DeskJet 2800 en Wi-Fi rend
+vingt-deux formats, aucun recto-verso et aucune couleur, ce que confirme `ipptool` avec
+`sides-supported = one-sided` et `color-supported = false`. L'application n'affiche donc ni
+case couleur ni case recto-verso pour cette imprimante, au lieu d'offrir un réglage que le
+pilote jetterait en silence.
+
+**Chaque appel est borné.** Six secondes pour une lecture, soixante pour une impression, et les
+options d'une file sont gardées cinq minutes. Sans ces bornes, une file déclarée dont
+l'imprimante est débranchée laisse `lpoptions` attendre, et l'agent attend avec lui : côté
+navigateur, cela se voit comme une recherche d'imprimantes qui tourne sans fin.
 
 ## Comment Print Bridge contourne le dialogue Windows
 
