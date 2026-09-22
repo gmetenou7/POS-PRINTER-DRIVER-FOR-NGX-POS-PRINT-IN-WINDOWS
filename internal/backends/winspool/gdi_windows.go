@@ -109,6 +109,7 @@ func Capabilities(printerName string) (printers.Caps, error) {
 		return caps, err
 	}
 
+	// Listes vides, jamais nulles : voir la note dans le backend CUPS.
 	caps.Papers = namedList(name, dcPaperNames, dcPapers, 64)
 	caps.Bins = namedList(name, dcBinNames, dcBins, 24)
 	caps.Duplex = deviceCapability(name, dcDuplex, nil) == 1
@@ -338,9 +339,10 @@ func applyOptions(devmode *devModeW, opts printers.DocOptions) {
 // font pas la même longueur, ce qui arrive avec des pilotes anciens, on s'arrête à la plus
 // courte plutôt que d'associer un nom au mauvais numéro.
 func namedList(name *uint16, namesCap, idsCap uintptr, nameLen int) []printers.NamedID {
+	empty := []printers.NamedID{}
 	count := deviceCapability(name, namesCap, nil)
 	if count <= 0 {
-		return nil
+		return empty
 	}
 	nameBuffer := make([]uint16, int(count)*nameLen)
 	deviceCapability(name, namesCap, unsafe.Pointer(&nameBuffer[0]))

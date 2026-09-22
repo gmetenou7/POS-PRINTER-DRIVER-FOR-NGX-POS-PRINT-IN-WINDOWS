@@ -93,7 +93,15 @@ func List() ([]Info, error) {
 // et c'est l'agent qui retrouve le mot-cle au moment d'imprimer : l'API reste la meme des deux
 // cotes, et le client n'a pas a savoir sur quel systeme il imprime.
 func Capabilities(name string) (printers.Caps, error) {
-	caps := printers.Caps{MaxCopies: 99, DPI: 300}
+	// Listes vides, jamais nulles. Un encodage JSON rend une tranche nulle par `null`, et le
+	// client qui compte ses elements se casse alors dessus : ce n'est pas a lui de se mefier
+	// d'un contrat qui promet une liste.
+	caps := printers.Caps{
+		Papers:    []printers.NamedID{},
+		Bins:      []printers.NamedID{},
+		MaxCopies: 99,
+		DPI:       300,
+	}
 	options, err := listOptions(name)
 	if err != nil {
 		return caps, err
