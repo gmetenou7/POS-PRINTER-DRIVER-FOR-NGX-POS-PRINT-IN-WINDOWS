@@ -3,7 +3,7 @@
 // Package libusb provides direct USB I/O for printers whose driver has
 // been replaced with WinUSB (e.g. by the legacy POS Printer Driver
 // Installer or Zadig). Communication goes through the Win32 WinUSB API,
-// not via the Windows print spooler — useful when usbprint.sys is not
+// not via the Windows print spooler, useful when usbprint.sys is not
 // available or has been intentionally swapped out for WebUSB compatibility.
 //
 // This implementation is pure Go: it calls setupapi.dll, winusb.dll and
@@ -29,7 +29,7 @@ type Device struct {
 	VID        string // 04B8
 	PID        string // 0202
 	Service    string // typically "WinUsb"
-	Path       string // \\?\usb#vid_04b8&pid_0202#... — used by CreateFile
+	Path       string // \\?\usb#vid_04b8&pid_0202#..., used by CreateFile
 }
 
 // List enumerates USB devices currently bound to the WinUsb service.
@@ -430,7 +430,7 @@ func lookupInterfacePath(guid windows.GUID, instanceID string) string {
 			continue
 		}
 		// DevicePath starts at offset 4 (32-bit) or 4-on-32, 4-on-64.
-		// Actually the docs say offset 4 — the struct is { DWORD CbSize; WCHAR DevicePath[]; }
+		// Actually the docs say offset 4, the struct is { DWORD CbSize; WCHAR DevicePath[]; }
 		// so we always read from offset 4.
 		path := utf16BytesToString(buf[4:])
 		if path == "" {

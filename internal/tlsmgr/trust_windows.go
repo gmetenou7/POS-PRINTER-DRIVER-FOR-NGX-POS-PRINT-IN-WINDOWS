@@ -9,7 +9,7 @@ import (
 
 // TrustCA adds the CA certificate to the Windows LocalMachine\Root store so
 // browsers stop showing the "not trusted" warning for https://localhost.
-// Requires elevation — the calling process must run as administrator.
+// Requires elevation, the calling process must run as administrator.
 //
 // We use certutil.exe rather than CryptoAPI directly: it's shipped with
 // every Windows install and handles store enumeration / deduplication.

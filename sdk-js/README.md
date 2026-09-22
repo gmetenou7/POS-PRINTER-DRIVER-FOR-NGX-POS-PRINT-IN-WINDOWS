@@ -1,4 +1,4 @@
-# sdk-js — client navigateur pour Print Bridge
+# sdk-js, client navigateur pour Print Bridge
 
 > **Non publié sur npm.** Pour les apps Angular, utilise plutôt [ngx-pos-print](https://www.npmjs.com/package/ngx-pos-print) avec `driver: 'bridge'`.
 
@@ -55,7 +55,7 @@ print-bridge.exe -cmd trust-ca
 
 ## Pour les apps Angular
 
-Tu n'as **pas besoin** de ce fichier — ngx-pos-print 1.1.0+ inclut déjà un driver `bridge` qui parle à l'agent :
+Tu n'as **pas besoin** de ce fichier, ngx-pos-print 1.1.0+ inclut déjà un driver `bridge` qui parle à l'agent :
 
 ```ts
 providePosPrint({ driver: 'bridge' })

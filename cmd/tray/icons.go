@@ -1,6 +1,6 @@
 package main
 
-// 16x16 RGBA-encoded ICO icons. Tiny printer pictograms — a filled 12x10
+// 16x16 RGBA-encoded ICO icons. Tiny printer pictograms, a filled 12x10
 // rectangle with a 12x3 paper feed strip on top. Color encodes status:
 // green = healthy, red = agent unreachable.
 

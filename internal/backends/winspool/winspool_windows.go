@@ -1,7 +1,7 @@
 //go:build windows
 
 // Package winspool provides direct access to the Windows print spooler RAW
-// pipeline. It never invokes GDI or the printer's UI driver — print jobs
+// pipeline. It never invokes GDI or the printer's UI driver, print jobs
 // are sent as opaque byte streams (ESC/POS for thermal printers).
 package winspool
 

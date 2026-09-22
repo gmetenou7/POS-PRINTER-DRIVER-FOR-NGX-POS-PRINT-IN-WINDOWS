@@ -1,4 +1,4 @@
-﻿# Print Bridge — installeur Windows (Phase 1)
+﻿# Print Bridge, installeur Windows (Phase 1)
 # - copie le binaire dans %ProgramFiles%\PrintBridge
 # - enregistre le service Windows (démarrage automatique)
 # - démarre le service
@@ -68,7 +68,7 @@ if (-not (Test-Path $SourceExe)) {
 # "Le processus ne peut pas accéder au fichier".
 $existingService = Get-Service $ServiceName -ErrorAction SilentlyContinue
 if ($existingService) {
-    Write-Host "Version précédente détectée — arrêt du service en cours..." -ForegroundColor Cyan
+    Write-Host "Version précédente détectée, arrêt du service en cours..." -ForegroundColor Cyan
     if ($existingService.Status -eq 'Running') {
         Stop-Service $ServiceName -Force -ErrorAction SilentlyContinue
         # Le service peut prendre une seconde à libérer ses handles
@@ -120,7 +120,7 @@ if (Test-Path $TrayExe) {
     $sc.TargetPath = $TrayExe
     $sc.WorkingDirectory = $InstallDir
     $sc.IconLocation = $TrayExe
-    $sc.Description = "Print Bridge — icône de notification"
+    $sc.Description = "Print Bridge, icône de notification"
     $sc.Save()
 
     # Démarrer la tray maintenant pour l'utilisateur courant

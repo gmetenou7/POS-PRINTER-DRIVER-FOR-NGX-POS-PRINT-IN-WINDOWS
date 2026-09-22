@@ -17,7 +17,7 @@ import (
 )
 
 // usbPortRE matches Windows USB virtual ports that carry VID:PID info, e.g.
-// "USB001", "USB002" — these alone don't carry VID/PID. But port names like
+// "USB001", "USB002", these alone don't carry VID/PID. But port names like
 // "USB\VID_04B8&PID_0202\..." do. We extract when present.
 var vidpidRE = regexp.MustCompile(`(?i)VID[_]?([0-9A-F]{4}).{0,3}PID[_]?([0-9A-F]{4})`)
 

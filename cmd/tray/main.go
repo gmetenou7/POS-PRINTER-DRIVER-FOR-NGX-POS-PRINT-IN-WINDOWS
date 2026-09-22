@@ -1,4 +1,4 @@
-// Print Bridge tray — runs in the user session and shows agent status
+// Print Bridge tray, runs in the user session and shows agent status
 // in the Windows notification area. The agent itself runs in session 0
 // (as a Windows service) and exposes its API on localhost; this tray
 // talks to that API like any other client.
@@ -57,9 +57,9 @@ func main() {
 func onReady() {
 	systray.SetTemplateIcon(iconRed, iconRed)
 	systray.SetTitle("Print Bridge")
-	systray.SetTooltip("Print Bridge — recherche de l'agent…")
+	systray.SetTooltip("Print Bridge : recherche de l'agent…")
 
-	mTitle = systray.AddMenuItem("Print Bridge — démarrage", "")
+	mTitle = systray.AddMenuItem("Print Bridge : démarrage", "")
 	mTitle.Disable()
 	systray.AddSeparator()
 
@@ -167,8 +167,8 @@ func refresh() {
 	printers.Store(body.Printers)
 
 	systray.SetTemplateIcon(iconGreen, iconGreen)
-	systray.SetTooltip(fmt.Sprintf("Print Bridge — %d imprimante(s) — %s", len(body.Printers), base))
-	mTitle.SetTitle("Print Bridge — connecté")
+	systray.SetTooltip(fmt.Sprintf("Print Bridge : %d imprimante(s), %s", len(body.Printers), base))
+	mTitle.SetTitle("Print Bridge, connecté")
 	mPrintersHdr.SetTitle(fmt.Sprintf("Imprimantes (%d)", len(body.Printers)))
 
 	for i, it := range mPrintersItems {
@@ -184,7 +184,7 @@ func refresh() {
 		if p.IsDefault {
 			marks = append(marks, "défaut")
 		}
-		label := fmt.Sprintf("  %s [%s] — %s", p.Name, p.Channel, p.Status)
+		label := fmt.Sprintf("  %s [%s], %s", p.Name, p.Channel, p.Status)
 		if len(marks) > 0 {
 			label += "  (" + strings.Join(marks, ", ") + ")"
 		}
@@ -196,8 +196,8 @@ func refresh() {
 func setOffline() {
 	healthy.Store(false)
 	systray.SetTemplateIcon(iconRed, iconRed)
-	systray.SetTooltip("Print Bridge — agent introuvable")
-	mTitle.SetTitle("Print Bridge — agent introuvable")
+	systray.SetTooltip("Print Bridge : agent introuvable")
+	mTitle.SetTitle("Print Bridge : agent introuvable")
 	mPrintersHdr.SetTitle("Imprimantes : —")
 	for _, it := range mPrintersItems {
 		it.Hide()

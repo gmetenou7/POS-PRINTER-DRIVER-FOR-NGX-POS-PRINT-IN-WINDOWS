@@ -41,7 +41,7 @@ Print Bridge résout ces trois problèmes en s'intercalant entre le navigateur e
             Imprimantes thermiques
 ```
 
-## État actuel — v1.0
+## État actuel, v1.0
 
 Toutes les phases sont livrées. L'agent supporte cinq canaux de communication en parallèle, identifie automatiquement les imprimantes thermiques, et expose une API stable côté navigateur en HTTP et HTTPS.
 
@@ -55,7 +55,7 @@ Toutes les phases sont livrées. L'agent supporte cinq canaux de communication e
 | Lecture des capacités du pilote (`/printers/{id}/capabilities`) | ✅ |
 | Service Windows (install / uninstall / start / stop) | ✅ |
 | Builder ESC/POS (texte, alignement, gras, cut, tiroir-caisse) | ✅ |
-| Builder ESC/POS riche — QR code, code-barres 1D, image bitmap | ✅ |
+| Builder ESC/POS riche, QR code, code-barres 1D, image bitmap | ✅ |
 | Backend réseau TCP 9100 + scan auto du /24 local | ✅ |
 | Découverte mDNS / Bonjour (`_pdl-datastream`, `_printer`, `_ipp`) | ✅ |
 | Backend série COM + Bluetooth SPP (via port COM virtuel) | ✅ |
@@ -78,17 +78,17 @@ Toutes les phases sont livrées. L'agent supporte cinq canaux de communication e
 
 ### Pour les utilisateurs finaux
 
-**Option A — Installeur single-EXE (le plus simple)**
+**Option A, Installeur single-EXE (le plus simple)**
 
 1. Télécharger `PrintBridge-Setup-X.Y.Z.exe` depuis les [releases](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS/releases)
 2. **Double-cliquer** dessus → UAC apparaît → accepter
 3. Suivre la fenêtre de progression (~5 secondes)
 
-**Option B — Archive ZIP**
+**Option B, Archive ZIP**
 
 1. Télécharger `print-bridge-X.Y.Z-windows-amd64.zip`
 2. Extraire l'archive
-3. Double-cliquer sur `Install.cmd` — il demande les droits admin automatiquement
+3. Double-cliquer sur `Install.cmd`, il demande les droits admin automatiquement
 
 Dans les deux cas, l'installeur :
 - Copie les binaires dans `C:\Program Files\PrintBridge\`
@@ -184,8 +184,8 @@ Réponse :
 ## API HTTP
 
 L'agent écoute sur deux ports :
-- **HTTP** : `http://127.0.0.1:19100` — pour les apps web servies en HTTP/localhost
-- **HTTPS** : `https://localhost:19101` — pour les apps web servies en HTTPS (Mixed Content)
+- **HTTP** : `http://127.0.0.1:19100`, pour les apps web servies en HTTP/localhost
+- **HTTPS** : `https://localhost:19101`, pour les apps web servies en HTTPS (Mixed Content)
 
 | Méthode | Endpoint | Description |
 |---|---|---|
@@ -280,4 +280,4 @@ ou double-clic sur `Uninstall.cmd` depuis l'archive de release.
 
 ## Licence
 
-MIT — Libre d'utilisation et de modification.
+MIT, Libre d'utilisation et de modification.

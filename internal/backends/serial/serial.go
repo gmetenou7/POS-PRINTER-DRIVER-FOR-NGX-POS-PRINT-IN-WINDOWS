@@ -18,7 +18,7 @@ import (
 // fingerprint database).
 type Port struct {
 	Name        string // "COM3"
-	Description string // "USB Serial Port (COM3)" — from Windows
+	Description string // "USB Serial Port (COM3)", from Windows
 	IsUSB       bool
 	VID         string
 	PID         string
@@ -46,7 +46,7 @@ func List() ([]Port, error) {
 
 // Print opens the COM port at the given baud rate and writes the bytes.
 // 9600 8N1 is the most common default for ESC/POS thermal printers; some
-// run at 19200 or 38400 — callers can override.
+// run at 19200 or 38400, callers can override.
 func Print(portName string, baud int, data []byte) (int, error) {
 	if baud <= 0 {
 		baud = 9600

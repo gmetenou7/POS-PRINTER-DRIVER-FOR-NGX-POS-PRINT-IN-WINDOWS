@@ -1,10 +1,10 @@
-// Print Bridge — minimal browser client.
+// Print Bridge, minimal browser client.
 // Works against the local agent (default http://127.0.0.1:19100).
-// No build step required — drop this file into your web app and import it.
+// No build step required, drop this file into your web app and import it.
 
 const DEFAULT_BASE = 'https://localhost:19101';
 const PROBE_TARGETS = [
-  // HTTPS first — required when the calling page is itself HTTPS.
+  // HTTPS first, required when the calling page is itself HTTPS.
   { scheme: 'https', host: 'localhost',   ports: [19101, 19103, 19105] },
   { scheme: 'http',  host: '127.0.0.1',   ports: [19100, 19102, 19104] },
 ];

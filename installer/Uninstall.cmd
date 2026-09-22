@@ -1,5 +1,5 @@
 @echo off
-REM Print Bridge — désinstalleur double-cliquable
+REM Print Bridge, désinstalleur double-cliquable
 
 setlocal
 
@@ -12,7 +12,7 @@ if %errorlevel% neq 0 (
 
 echo.
 echo ===========================================
-echo   Print Bridge — Désinstallation
+echo   Print Bridge, Désinstallation
 echo ===========================================
 echo.
 

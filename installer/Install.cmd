@@ -1,5 +1,5 @@
 @echo off
-REM Print Bridge — installeur double-cliquable
+REM Print Bridge, installeur double-cliquable
 REM Auto-élève en administrateur puis lance install.ps1
 
 setlocal
@@ -15,7 +15,7 @@ if %errorlevel% neq 0 (
 REM Une fois élevé, lancer le script PowerShell
 echo.
 echo ===========================================
-echo   Print Bridge — Installation
+echo   Print Bridge, Installation
 echo ===========================================
 echo.
 

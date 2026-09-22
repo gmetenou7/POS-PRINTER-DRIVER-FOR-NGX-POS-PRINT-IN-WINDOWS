@@ -1,4 +1,4 @@
-# Print Bridge — script de release.
+# Print Bridge, script de release.
 # Compile les binaires, assemble le payload et produit deux livrables :
 #   1. dist\print-bridge-X.Y.Z-windows-amd64.zip  (archive classique)
 #   2. dist\PrintBridge-Setup-X.Y.Z.exe           (installeur single-EXE)

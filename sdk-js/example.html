@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <title>Print Bridge — démonstration</title>
+  <title>Print Bridge, démonstration</title>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #1c1c1e; }
     h1 { margin-bottom: 0; }
@@ -21,7 +21,7 @@
   </style>
 </head>
 <body>
-  <h1>Print Bridge — démonstration</h1>
+  <h1>Print Bridge, démonstration</h1>
   <p class="lead">Cette page utilise <code>@print-bridge/sdk</code> pour parler à l'agent local.</p>
 
   <section>
@@ -75,7 +75,7 @@ Merci !</textarea>
           ).join('') + '</ul>';
 
       select.innerHTML = '<option value="">(défaut)</option>' +
-        printers.map(p => `<option value="${p.id}">${p.name} — ${p.channel}</option>`).join('');
+        printers.map(p => `<option value="${p.id}">${p.name}, ${p.channel}</option>`).join('');
     }
 
     try {

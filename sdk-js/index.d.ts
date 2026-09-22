@@ -1,5 +1,5 @@
 /**
- * Print Bridge — browser SDK.
+ * Print Bridge, browser SDK.
  *
  * Talks to the local Print Bridge agent (HTTPS:19101 preferred, HTTP:19100 fallback)
  * to print on any thermal receipt printer the agent has detected.

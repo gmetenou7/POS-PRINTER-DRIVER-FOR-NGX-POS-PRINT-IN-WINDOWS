@@ -1,6 +1,6 @@
 // Package network implements the TCP-9100 backend (raw-mode JetDirect).
 // Virtually every Ethernet- or Wi-Fi-attached thermal printer speaks this
-// protocol — you open a TCP connection to port 9100 and write the
+// protocol, you open a TCP connection to port 9100 and write the
 // ESC/POS bytes directly.
 package network
 

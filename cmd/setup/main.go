@@ -1,4 +1,4 @@
-// Print Bridge — single-EXE installer.
+// Print Bridge, single-EXE installer.
 //
 // Embeds the agent, the tray, the PowerShell installer script and the
 // docs via go:embed. On launch it:
@@ -8,7 +8,7 @@
 //   4. Runs the bundled install.ps1, streaming its output to the console.
 //   5. Pauses for the user to read the result, then cleans up.
 //
-// No external installer toolchain (NSIS, Inno, WiX) is required — the
+// No external installer toolchain (NSIS, Inno, WiX) is required, the
 // installer is just another Go binary.
 package main
 
@@ -50,12 +50,12 @@ var payload embed.FS
 
 const banner = `
 =================================================
-   Print Bridge — installeur Windows
+   Print Bridge, installeur Windows
 =================================================
 `
 
 func main() {
-	// Make sure the console can display UTF-8 — PowerShell streams its
+	// Make sure the console can display UTF-8, PowerShell streams its
 	// French output as UTF-8 and the default Windows console code page
 	// (CP-850 / 1252) garbles it. setConsoleUTF8 also flips stdout so
 	// our own writes use UTF-8 consistently.
@@ -132,7 +132,7 @@ func isElevated() (bool, error) {
 
 // relaunchElevated restarts this binary via ShellExecute with the "runas"
 // verb, which triggers a UAC prompt. The new process inherits the same
-// command-line arguments. The current process returns immediately —
+// command-line arguments. The current process returns immediately,
 // callers should exit.
 func relaunchElevated() error {
 	exe, err := os.Executable()

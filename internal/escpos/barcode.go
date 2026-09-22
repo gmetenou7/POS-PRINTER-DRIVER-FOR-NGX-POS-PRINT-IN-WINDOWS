@@ -40,7 +40,7 @@ func (b *Builder) QRCode(data string, module int, ecc QRECC) *Builder {
 	// 3) Error correction
 	b.buf.Write([]byte{GS, '(', 'k', 0x03, 0x00, '1', 'E', byte(ecc)})
 
-	// 4) Store data — pL pH = data length + 3 (cn + fn + m)
+	// 4) Store data, pL pH = data length + 3 (cn + fn + m)
 	raw := []byte(data)
 	n := len(raw) + 3
 	pL := byte(n & 0xFF)

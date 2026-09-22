@@ -3,13 +3,13 @@
 // The contract intentionally stays small so any framework or vanilla fetch
 // can talk to it:
 //
-//	GET  /health                       — liveness
-//	GET  /printers                     — list detected printers
-//	GET  /printers/{id}                — single printer
-//	GET  /printers/{id}/capabilities   — what the printer's driver can do
-//	POST /print                        — submit a print job (JSON body)
-//	POST /print-document               — print rendered pages (A4 and the like)
-//	POST /print/text                   — submit plain text, server builds ESC/POS
+//	GET  /health                      , liveness
+//	GET  /printers                    , list detected printers
+//	GET  /printers/{id}               , single printer
+//	GET  /printers/{id}/capabilities  , what the printer's driver can do
+//	POST /print                       , submit a print job (JSON body)
+//	POST /print-document              , print rendered pages (A4 and the like)
+//	POST /print/text                  , submit plain text, server builds ESC/POS
 //
 // CORS is open by default because the agent only listens on localhost.
 package api
@@ -168,7 +168,7 @@ type capabilitiesResponse struct {
 
 // printRequest is the JSON body accepted by POST /print. Either `raw` (base64),
 // `text`, or one of the structured fields (qr, barcode, image) must be provided.
-// `printerId` is optional — if absent the agent auto-selects the best default
+// `printerId` is optional, if absent the agent auto-selects the best default
 // (preferring thermal, default).
 type printRequest struct {
 	PrinterID  string             `json:"printerId,omitempty"`

@@ -32,7 +32,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 	defer closeLog()
 
-	log.Printf("Print Bridge — démarrage sur %s:%d", cfg.BindAddr, cfg.Port)
+	log.Printf("Print Bridge, démarrage sur %s:%d", cfg.BindAddr, cfg.Port)
 
 	reg := printers.NewRegistry()
 
@@ -97,7 +97,7 @@ func scan(ctx context.Context, reg *printers.Registry) {
 	defer cancel()
 	nl := network.ScanLocalSubnets(scanCtx, network.DefaultPort, 350*time.Millisecond)
 
-	// mDNS discovery runs in parallel — it often catches printers that
+	// mDNS discovery runs in parallel, it often catches printers that
 	// the /24 scan misses (e.g. multi-homed hosts, jumbo subnets).
 	mdnsCtx, cancelMDNS := context.WithTimeout(ctx, 2*time.Second)
 	defer cancelMDNS()

@@ -17,7 +17,7 @@ import (
 
 const (
 	serviceName = "PrintBridge"
-	serviceDesc = "Print Bridge — pont d'impression thermique universel pour applications web."
+	serviceDesc = "Print Bridge, pont d'impression thermique universel pour applications web."
 )
 
 func main() {
