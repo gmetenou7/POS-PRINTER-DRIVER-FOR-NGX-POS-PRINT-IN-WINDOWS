@@ -111,7 +111,7 @@ func ensureLeaf(p Paths) error {
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
-			CommonName: "localhost",
+			CommonName:   "localhost",
 			Organization: []string{"Print Bridge"},
 		},
 		NotBefore:   time.Now().Add(-1 * time.Hour),

@@ -10,6 +10,8 @@ const (
 	ChannelNetwork   Channel = "network"
 	ChannelSerial    Channel = "serial"
 	ChannelBluetooth Channel = "bluetooth"
+	// ChannelCUPS : file declaree dans le spouleur de Linux ou de macOS.
+	ChannelCUPS Channel = "cups"
 )
 
 type Status string
@@ -40,12 +42,12 @@ type Printer struct {
 }
 
 type PrintJob struct {
-	PrinterID string `json:"printerId,omitempty"`
-	Raw       []byte `json:"-"`
-	RawBase64 string `json:"raw,omitempty"`
-	Text      string `json:"text,omitempty"`
-	CopyCount int    `json:"copies,omitempty"`
-	OpenDrawer bool  `json:"openDrawer,omitempty"`
+	PrinterID  string `json:"printerId,omitempty"`
+	Raw        []byte `json:"-"`
+	RawBase64  string `json:"raw,omitempty"`
+	Text       string `json:"text,omitempty"`
+	CopyCount  int    `json:"copies,omitempty"`
+	OpenDrawer bool   `json:"openDrawer,omitempty"`
 }
 
 type PrintResult struct {

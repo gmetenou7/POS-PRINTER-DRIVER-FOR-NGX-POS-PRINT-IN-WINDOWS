@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gmetenou7/print-bridge/internal/api"
+	"github.com/gmetenou7/print-bridge/internal/backends/cups"
 	"github.com/gmetenou7/print-bridge/internal/backends/libusb"
 	"github.com/gmetenou7/print-bridge/internal/backends/network"
 	"github.com/gmetenou7/print-bridge/internal/backends/serial"
@@ -122,13 +123,22 @@ func scan(ctx context.Context, reg *printers.Registry) {
 		log.Printf("scan libusb : %v", err)
 	}
 
+	// Files du spouleur de Linux ou de macOS. Vide sur Windows, ou c'est winspool qui repond.
+	var cupsList []printers.Printer
+	if items, err := cups.List(); err != nil {
+		log.Printf("scan cups : %v", err)
+	} else {
+		cupsList = detect.FromCUPS(items)
+	}
+
 	merged := detect.DedupWinspoolNetwork(wsList, netList)
+	merged = append(merged, cupsList...)
 	merged = append(merged, serList...)
 	merged = append(merged, usbList...)
 	reg.Replace(merged)
 
-	log.Printf("scan : %d imprimante(s) (winspool=%d, network=%d, serial=%d, libusb=%d)",
-		len(merged), len(wsList), len(netList), len(serList), len(usbList))
+	log.Printf("scan : %d imprimante(s) (winspool=%d, cups=%d, network=%d, serial=%d, libusb=%d)",
+		len(merged), len(wsList), len(cupsList), len(netList), len(serList), len(usbList))
 	for _, p := range merged {
 		thermal := ""
 		if p.IsThermal {
@@ -164,6 +174,8 @@ func printJob(p printers.Printer, data []byte) (int, error) {
 	switch p.Channel {
 	case printers.ChannelWinspool:
 		return winspool.PrintRaw(p.Name, "PrintBridge Job", data)
+	case printers.ChannelCUPS:
+		return cups.PrintRaw(p.Name, "PrintBridge Job", data)
 	case printers.ChannelNetwork:
 		host, portStr, err := net.SplitHostPort(p.Port)
 		if err != nil {

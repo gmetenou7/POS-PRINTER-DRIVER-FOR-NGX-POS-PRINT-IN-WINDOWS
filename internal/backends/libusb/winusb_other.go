@@ -14,5 +14,5 @@ type Device struct {
 
 var errNotWindows = errors.New("libusb (WinUSB) backend is Windows-only")
 
-func List() ([]Device, error)                  { return nil, errNotWindows }
+func List() ([]Device, error)                    { return nil, errNotWindows }
 func Print(dev Device, data []byte) (int, error) { return 0, errNotWindows }

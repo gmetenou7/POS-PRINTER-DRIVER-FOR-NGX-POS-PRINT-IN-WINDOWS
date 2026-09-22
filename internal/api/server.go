@@ -26,9 +26,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gmetenou7/print-bridge/internal/backends/cups"
+	"github.com/gmetenou7/print-bridge/internal/backends/winspool"
 	"github.com/gmetenou7/print-bridge/internal/config"
 	"github.com/gmetenou7/print-bridge/internal/escpos"
-	"github.com/gmetenou7/print-bridge/internal/backends/winspool"
 	"github.com/gmetenou7/print-bridge/internal/printers"
 )
 
@@ -94,8 +95,8 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"service":  "print-bridge",
-		"version":  "0.1.0",
+		"service":   "print-bridge",
+		"version":   "0.1.0",
 		"endpoints": []string{"/health", "/printers", "/print", "/print/text"},
 	})
 }
@@ -147,11 +148,11 @@ func (s *Server) handlePrinterByID(w http.ResponseWriter, r *http.Request) {
 // branchée en USB brut, en série ou par le réseau n'en a pas : on rend alors une réponse vide
 // plutôt qu'une erreur, parce que l'absence d'options est une réponse valable pour elle.
 func (s *Server) writeCapabilities(w http.ResponseWriter, p printers.Printer) {
-	if p.Channel != printers.ChannelWinspool {
+	if !drivesDocuments(p) {
 		writeJSON(w, http.StatusOK, capabilitiesResponse{OK: true, Driverless: true})
 		return
 	}
-	caps, err := winspool.Capabilities(p.Name)
+	caps, err := documentCapabilities(p)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -163,7 +164,7 @@ type capabilitiesResponse struct {
 	OK bool `json:"ok"`
 	// Vrai quand l'imprimante n'a pas de pilote Windows à interroger : rien à proposer.
 	Driverless bool           `json:"driverless,omitempty"`
-	Caps       *winspool.Caps `json:"capabilities,omitempty"`
+	Caps       *printers.Caps `json:"capabilities,omitempty"`
 }
 
 // printRequest is the JSON body accepted by POST /print. Either `raw` (base64),
@@ -171,15 +172,15 @@ type capabilitiesResponse struct {
 // `printerId` is optional, if absent the agent auto-selects the best default
 // (preferring thermal, default).
 type printRequest struct {
-	PrinterID  string             `json:"printerId,omitempty"`
-	Raw        string             `json:"raw,omitempty"`
-	Text       string             `json:"text,omitempty"`
-	QR         *qrPayload         `json:"qr,omitempty"`
-	Barcode    *barcodePayload    `json:"barcode,omitempty"`
-	Image      *imagePayload      `json:"image,omitempty"`
-	Cut        *bool              `json:"cut,omitempty"`
-	OpenDrawer bool               `json:"openDrawer,omitempty"`
-	Copies     int                `json:"copies,omitempty"`
+	PrinterID  string          `json:"printerId,omitempty"`
+	Raw        string          `json:"raw,omitempty"`
+	Text       string          `json:"text,omitempty"`
+	QR         *qrPayload      `json:"qr,omitempty"`
+	Barcode    *barcodePayload `json:"barcode,omitempty"`
+	Image      *imagePayload   `json:"image,omitempty"`
+	Cut        *bool           `json:"cut,omitempty"`
+	OpenDrawer bool            `json:"openDrawer,omitempty"`
+	Copies     int             `json:"copies,omitempty"`
 }
 
 type qrPayload struct {
@@ -197,7 +198,7 @@ type barcodePayload struct {
 }
 
 type imagePayload struct {
-	Base64       string `json:"base64"`              // PNG or JPEG
+	Base64       string `json:"base64"` // PNG or JPEG
 	MaxWidthDots int    `json:"maxWidthDots,omitempty"`
 }
 
@@ -280,7 +281,7 @@ func (s *Server) handlePrintDocument(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "imprimante introuvable : "+req.PrinterID)
 		return
 	}
-	if printer.Channel != printers.ChannelWinspool {
+	if !drivesDocuments(printer) {
 		// Une thermique ou une matricielle ne se pilote pas ainsi : elle attend son flux
 		// d'octets, pas une page rendue. Le dire franchement plutôt que sortir du charabia.
 		writeErr(w, http.StatusUnprocessableEntity,
@@ -304,7 +305,7 @@ func (s *Server) handlePrintDocument(w http.ResponseWriter, r *http.Request) {
 	}
 
 	start := time.Now()
-	printed, err := winspool.PrintDocument(printer.Name, name, pages, req.Options.toBackend())
+	printed, err := printDocument(printer, name, pages, req.Options.toBackend())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, printers.PrintResult{
 			OK:       false,
@@ -321,8 +322,8 @@ func (s *Server) handlePrintDocument(w http.ResponseWriter, r *http.Request) {
 }
 
 type documentRequest struct {
-	PrinterID string          `json:"printerId,omitempty"`
-	JobName   string          `json:"jobName,omitempty"`
+	PrinterID string `json:"printerId,omitempty"`
+	JobName   string `json:"jobName,omitempty"`
 	// Une image par page, en base64. Le préfixe d'une URL de données est toléré : c'est ce que
 	// rend `canvas.toDataURL()`, et l'appelant ne devrait pas avoir à le retirer lui-même.
 	Pages   []string        `json:"pages"`
@@ -338,8 +339,8 @@ type documentOptions struct {
 	Landscape *bool  `json:"landscape,omitempty"`
 }
 
-func (o documentOptions) toBackend() winspool.DocOptions {
-	return winspool.DocOptions{
+func (o documentOptions) toBackend() printers.DocOptions {
+	return printers.DocOptions{
 		Copies:    o.Copies,
 		Color:     o.Color,
 		Duplex:    o.Duplex,
@@ -354,6 +355,28 @@ type documentResult struct {
 	Pages    int    `json:"pages"`
 	Duration int64  `json:"durationMs,omitempty"`
 	Error    string `json:"error,omitempty"`
+}
+
+// drivesDocuments dit si le systeme pilote cette imprimante, et peut donc lui confier une page
+// a mettre en forme. Une thermique en USB brut, en serie ou par le reseau n'a pas de pilote :
+// elle attend son flux d'octets, et c'est /print qui la sert.
+func drivesDocuments(p printers.Printer) bool {
+	return p.Channel == printers.ChannelWinspool || p.Channel == printers.ChannelCUPS
+}
+
+// documentCapabilities interroge le spouleur du systeme, quel qu'il soit.
+func documentCapabilities(p printers.Printer) (printers.Caps, error) {
+	if p.Channel == printers.ChannelCUPS {
+		return cups.Capabilities(p.Name)
+	}
+	return winspool.Capabilities(p.Name)
+}
+
+func printDocument(p printers.Printer, jobName string, pages [][]byte, opts printers.DocOptions) (int, error) {
+	if p.Channel == printers.ChannelCUPS {
+		return cups.PrintDocument(p.Name, jobName, pages, opts)
+	}
+	return winspool.PrintDocument(p.Name, jobName, pages, opts)
 }
 
 // pick retient l'imprimante demandée, ou celle par défaut quand aucune n'est nommée.

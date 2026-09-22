@@ -26,16 +26,16 @@ var virtualMACPrefixes = []string{
 // Name substrings used by common virtual adapters when MAC-based detection
 // isn't enough (e.g. TAP/TUN adapters without a stable OUI).
 var virtualNameSubstrings = []string{
-	"vethernet",  // Hyper-V / Windows containers
-	"wsl",        // WSL adapter
+	"vethernet", // Hyper-V / Windows containers
+	"wsl",       // WSL adapter
 	"hyper-v",
 	"vmware",
 	"virtualbox",
 	"vbox",
 	"docker",
 	"tailscale",
-	"tap-",       // OpenVPN TAP
-	"tun",        // generic tunnel
+	"tap-", // OpenVPN TAP
+	"tun",  // generic tunnel
 	"loopback",
 	"bluetooth",
 }

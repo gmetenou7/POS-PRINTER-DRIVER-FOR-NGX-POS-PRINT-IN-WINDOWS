@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gmetenou7/print-bridge/internal/backends/cups"
 	"github.com/gmetenou7/print-bridge/internal/backends/libusb"
 	"github.com/gmetenou7/print-bridge/internal/backends/network"
 	"github.com/gmetenou7/print-bridge/internal/backends/serial"
@@ -23,6 +24,28 @@ var vidpidRE = regexp.MustCompile(`(?i)VID[_]?([0-9A-F]{4}).{0,3}PID[_]?([0-9A-F
 
 // FromWinspool turns winspool.LocalInfo into the canonical Printer model and
 // applies thermal-detection heuristics.
+// FromCUPS convertit les files de CUPS en imprimantes connues.
+//
+// Une file CUPS est l'equivalent exact d'une imprimante du spouleur Windows : le systeme la
+// pilote, elle a un nom, un etat, et peut porter un document de page.
+func FromCUPS(items []cups.Info) []printers.Printer {
+	now := time.Now().UTC()
+	out := make([]printers.Printer, 0, len(items))
+	for _, it := range items {
+		out = append(out, printers.Printer{
+			ID:         idFor(printers.ChannelCUPS, it.Name),
+			Name:       it.Name,
+			Channel:    printers.ChannelCUPS,
+			Port:       it.Device,
+			IsDefault:  it.IsDefault,
+			IsThermal:  printers.IsLikelyThermal(it.Name, it.Device, ""),
+			Status:     printers.Status(it.Status),
+			DetectedAt: now,
+		})
+	}
+	return out
+}
+
 func FromWinspool(items []winspool.LocalInfo) []printers.Printer {
 	now := time.Now().UTC()
 	out := make([]printers.Printer, 0, len(items))

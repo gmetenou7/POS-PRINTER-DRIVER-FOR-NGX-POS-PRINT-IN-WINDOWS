@@ -45,12 +45,12 @@ func List() ([]Device, error) {
 // Print writes raw bytes to the printer's first bulk-OUT endpoint.
 //
 // Flow:
-//   1. CreateFile on the device path (FILE_FLAG_OVERLAPPED required by WinUSB).
-//   2. WinUsb_Initialize → InterfaceHandle.
-//   3. WinUsb_QueryInterfaceSettings to learn how many endpoints the iface has.
-//   4. WinUsb_QueryPipe for each endpoint; pick the first OUT bulk pipe.
-//   5. WinUsb_WritePipe with the data.
-//   6. Close handles in reverse order.
+//  1. CreateFile on the device path (FILE_FLAG_OVERLAPPED required by WinUSB).
+//  2. WinUsb_Initialize → InterfaceHandle.
+//  3. WinUsb_QueryInterfaceSettings to learn how many endpoints the iface has.
+//  4. WinUsb_QueryPipe for each endpoint; pick the first OUT bulk pipe.
+//  5. WinUsb_WritePipe with the data.
+//  6. Close handles in reverse order.
 func Print(dev Device, data []byte) (int, error) {
 	if len(data) == 0 {
 		return 0, errors.New("payload vide")
@@ -65,12 +65,12 @@ func Print(dev Device, data []byte) (int, error) {
 	}
 
 	const (
-		genericRead       = 0x80000000
-		genericWrite      = 0x40000000
-		fileShareRead     = 0x00000001
-		fileShareWrite    = 0x00000002
-		openExisting      = 3
-		fileAttrNormal    = 0x00000080
+		genericRead        = 0x80000000
+		genericWrite       = 0x40000000
+		fileShareRead      = 0x00000001
+		fileShareWrite     = 0x00000002
+		openExisting       = 3
+		fileAttrNormal     = 0x00000080
 		fileFlagOverlapped = 0x40000000
 	)
 	handle, err := windows.CreateFile(
@@ -140,16 +140,16 @@ func Print(dev Device, data []byte) (int, error) {
 // --- Internals: SetupAPI enumeration --------------------------------------
 
 var (
-	setupapi = windows.NewLazySystemDLL("setupapi.dll")
+	setupapi  = windows.NewLazySystemDLL("setupapi.dll")
 	winusbDLL = windows.NewLazySystemDLL("winusb.dll")
 
-	procSetupDiGetClassDevsW                = setupapi.NewProc("SetupDiGetClassDevsW")
-	procSetupDiEnumDeviceInfo               = setupapi.NewProc("SetupDiEnumDeviceInfo")
-	procSetupDiGetDeviceRegistryPropertyW   = setupapi.NewProc("SetupDiGetDeviceRegistryPropertyW")
-	procSetupDiGetDeviceInstanceIdW         = setupapi.NewProc("SetupDiGetDeviceInstanceIdW")
-	procSetupDiEnumDeviceInterfaces         = setupapi.NewProc("SetupDiEnumDeviceInterfaces")
-	procSetupDiGetDeviceInterfaceDetailW    = setupapi.NewProc("SetupDiGetDeviceInterfaceDetailW")
-	procSetupDiDestroyDeviceInfoList        = setupapi.NewProc("SetupDiDestroyDeviceInfoList")
+	procSetupDiGetClassDevsW              = setupapi.NewProc("SetupDiGetClassDevsW")
+	procSetupDiEnumDeviceInfo             = setupapi.NewProc("SetupDiEnumDeviceInfo")
+	procSetupDiGetDeviceRegistryPropertyW = setupapi.NewProc("SetupDiGetDeviceRegistryPropertyW")
+	procSetupDiGetDeviceInstanceIdW       = setupapi.NewProc("SetupDiGetDeviceInstanceIdW")
+	procSetupDiEnumDeviceInterfaces       = setupapi.NewProc("SetupDiEnumDeviceInterfaces")
+	procSetupDiGetDeviceInterfaceDetailW  = setupapi.NewProc("SetupDiGetDeviceInterfaceDetailW")
+	procSetupDiDestroyDeviceInfoList      = setupapi.NewProc("SetupDiDestroyDeviceInfoList")
 
 	procWinUsbInitialize             = winusbDLL.NewProc("WinUsb_Initialize")
 	procWinUsbFree                   = winusbDLL.NewProc("WinUsb_Free")
@@ -194,12 +194,12 @@ type usbInterfaceDescriptor struct {
 }
 
 type winusbPipeInformation struct {
-	PipeType       uint32
-	PipeId         byte
-	_              [3]byte
+	PipeType          uint32
+	PipeId            byte
+	_                 [3]byte
 	MaximumPacketSize uint16
-	Interval       byte
-	_              [1]byte
+	Interval          byte
+	_                 [1]byte
 }
 
 // All-classes enumeration returns every present device. We filter to USB by

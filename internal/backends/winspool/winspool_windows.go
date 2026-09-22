@@ -15,15 +15,15 @@ import (
 var (
 	winspool = windows.NewLazySystemDLL("winspool.drv")
 
-	procEnumPrintersW       = winspool.NewProc("EnumPrintersW")
-	procGetDefaultPrinterW  = winspool.NewProc("GetDefaultPrinterW")
-	procOpenPrinterW        = winspool.NewProc("OpenPrinterW")
-	procClosePrinter        = winspool.NewProc("ClosePrinter")
-	procStartDocPrinterW    = winspool.NewProc("StartDocPrinterW")
-	procEndDocPrinter       = winspool.NewProc("EndDocPrinter")
-	procStartPagePrinter    = winspool.NewProc("StartPagePrinter")
-	procEndPagePrinter      = winspool.NewProc("EndPagePrinter")
-	procWritePrinter        = winspool.NewProc("WritePrinter")
+	procEnumPrintersW      = winspool.NewProc("EnumPrintersW")
+	procGetDefaultPrinterW = winspool.NewProc("GetDefaultPrinterW")
+	procOpenPrinterW       = winspool.NewProc("OpenPrinterW")
+	procClosePrinter       = winspool.NewProc("ClosePrinter")
+	procStartDocPrinterW   = winspool.NewProc("StartDocPrinterW")
+	procEndDocPrinter      = winspool.NewProc("EndDocPrinter")
+	procStartPagePrinter   = winspool.NewProc("StartPagePrinter")
+	procEndPagePrinter     = winspool.NewProc("EndPagePrinter")
+	procWritePrinter       = winspool.NewProc("WritePrinter")
 )
 
 const (
@@ -43,27 +43,27 @@ const (
 
 // PRINTER_INFO_2W (subset of fields we actually read)
 type printerInfo2W struct {
-	ServerName       *uint16
-	PrinterName      *uint16
-	ShareName        *uint16
-	PortName         *uint16
-	DriverName       *uint16
-	Comment          *uint16
-	Location         *uint16
-	DevMode          uintptr
-	SepFile          *uint16
-	PrintProcessor   *uint16
-	Datatype         *uint16
-	Parameters       *uint16
+	ServerName         *uint16
+	PrinterName        *uint16
+	ShareName          *uint16
+	PortName           *uint16
+	DriverName         *uint16
+	Comment            *uint16
+	Location           *uint16
+	DevMode            uintptr
+	SepFile            *uint16
+	PrintProcessor     *uint16
+	Datatype           *uint16
+	Parameters         *uint16
 	SecurityDescriptor uintptr
-	Attributes       uint32
-	Priority         uint32
-	DefaultPriority  uint32
-	StartTime        uint32
-	UntilTime        uint32
-	Status           uint32
-	JobsCount        uint32
-	AveragePPM       uint32
+	Attributes         uint32
+	Priority           uint32
+	DefaultPriority    uint32
+	StartTime          uint32
+	UntilTime          uint32
+	Status             uint32
+	JobsCount          uint32
+	AveragePPM         uint32
 }
 
 // DOC_INFO_1W
@@ -75,11 +75,11 @@ type docInfo1W struct {
 
 // LocalInfo is a flat view of one EnumPrinters entry.
 type LocalInfo struct {
-	Name       string
-	Port       string
-	Driver     string
-	Status     uint32
-	IsDefault  bool
+	Name      string
+	Port      string
+	Driver    string
+	Status    uint32
+	IsDefault bool
 }
 
 // List enumerates locally available printers (installed in Windows).

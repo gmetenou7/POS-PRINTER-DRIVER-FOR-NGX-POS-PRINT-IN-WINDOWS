@@ -21,6 +21,7 @@ package winspool
 import (
 	"bytes"
 	"fmt"
+	"github.com/gmetenou7/print-bridge/internal/printers"
 	"image"
 	"image/color"
 	"image/draw"
@@ -100,41 +101,9 @@ const (
 	srcCopy         = 0x00CC0020
 )
 
-// NamedID est un réglage proposé par le pilote : son numéro, et le nom qu'il porte à l'écran.
-type NamedID struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-}
-
-// Caps est ce qu'une imprimante déclare savoir faire, lu dans son pilote.
-type Caps struct {
-	Papers    []NamedID `json:"papers"`
-	Bins      []NamedID `json:"bins"`
-	Duplex    bool      `json:"duplex"`
-	Color     bool      `json:"color"`
-	MaxCopies int       `json:"maxCopies"`
-	// Résolution et surface imprimable, pour que l'appelant rende ses pages à la bonne taille.
-	DPI      int `json:"dpi"`
-	WidthPx  int `json:"widthPx"`
-	HeightPx int `json:"heightPx"`
-}
-
-// DocOptions traduit les choix de l'utilisateur en réglages du pilote.
-//
-// Les pointeurs distinguent « non choisi » de « choisi à faux » : un zéro voudrait dire
-// monochrome, alors qu'on veut souvent dire « laisse le défaut du pilote ».
-type DocOptions struct {
-	Copies    int
-	Color     *bool
-	Duplex    string // "", "none", "long", "short"
-	Bin       int    // 0 : bac par défaut
-	Paper     int    // 0 : format par défaut
-	Landscape *bool
-}
-
 // Capabilities lit ce que le pilote de l'imprimante déclare savoir faire.
-func Capabilities(printerName string) (Caps, error) {
-	var caps Caps
+func Capabilities(printerName string) (printers.Caps, error) {
+	var caps printers.Caps
 	name, err := windows.UTF16PtrFromString(printerName)
 	if err != nil {
 		return caps, err
@@ -170,7 +139,7 @@ func Capabilities(printerName string) (Caps, error) {
 // PrintDocument imprime des pages déjà rendues en images, sans ouvrir aucune fenêtre.
 //
 // Rend le nombre de pages effectivement envoyées.
-func PrintDocument(printerName, docName string, pages [][]byte, opts DocOptions) (int, error) {
+func PrintDocument(printerName, docName string, pages [][]byte, opts printers.DocOptions) (int, error) {
 	if len(pages) == 0 {
 		return 0, fmt.Errorf("aucune page à imprimer")
 	}
@@ -277,7 +246,7 @@ func drawPage(hdc uintptr, encoded []byte, width, height int) error {
 // Partir du défaut du pilote, et non d'une structure vide : un DEVMODE fabriqué de toutes
 // pièces est refusé par beaucoup de pilotes, qui y rangent des réglages propres à leur matériel
 // dont nous ne savons rien.
-func openDevMode(name *uint16, printerName string, opts DocOptions) (*devModeW, []byte, error) {
+func openDevMode(name *uint16, printerName string, opts printers.DocOptions) (*devModeW, []byte, error) {
 	var handle windows.Handle
 	r, _, errc := procOpenPrinterW.Call(
 		uintptr(unsafe.Pointer(name)),
@@ -320,7 +289,7 @@ func openDevMode(name *uint16, printerName string, opts DocOptions) (*devModeW, 
 	return devmode, buffer, nil
 }
 
-func applyOptions(devmode *devModeW, opts DocOptions) {
+func applyOptions(devmode *devModeW, opts printers.DocOptions) {
 	if opts.Copies > 1 {
 		devmode.Copies = int16(opts.Copies)
 		devmode.Collate = dmCollateTrue
@@ -368,7 +337,7 @@ func applyOptions(devmode *devModeW, opts DocOptions) {
 // Les deux listes viennent d'appels séparés et sont données dans le même ordre. Quand elles ne
 // font pas la même longueur, ce qui arrive avec des pilotes anciens, on s'arrête à la plus
 // courte plutôt que d'associer un nom au mauvais numéro.
-func namedList(name *uint16, namesCap, idsCap uintptr, nameLen int) []NamedID {
+func namedList(name *uint16, namesCap, idsCap uintptr, nameLen int) []printers.NamedID {
 	count := deviceCapability(name, namesCap, nil)
 	if count <= 0 {
 		return nil
@@ -384,10 +353,10 @@ func namedList(name *uint16, namesCap, idsCap uintptr, nameLen int) []NamedID {
 		total = int(ids)
 	}
 
-	list := make([]NamedID, 0, total)
+	list := make([]printers.NamedID, 0, total)
 	for i := 0; i < total; i++ {
 		start := i * nameLen
-		list = append(list, NamedID{
+		list = append(list, printers.NamedID{
 			ID:   int(idBuffer[i]),
 			Name: wstrFixed(nameBuffer[start : start+nameLen]),
 		})

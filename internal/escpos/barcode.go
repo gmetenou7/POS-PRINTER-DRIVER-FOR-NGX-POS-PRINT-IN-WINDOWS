@@ -17,11 +17,11 @@ const (
 // (1..16, recommended 4..8). `ecc` controls error correction.
 //
 // Wraps the standard sequence:
-//   1. set model (GS ( k pL pH cn fn n1 n2)
-//   2. set size  (GS ( k ...)
-//   3. set EC    (GS ( k ...)
-//   4. store     (GS ( k pL pH cn fn data)
-//   5. print     (GS ( k ...)
+//  1. set model (GS ( k pL pH cn fn n1 n2)
+//  2. set size  (GS ( k ...)
+//  3. set EC    (GS ( k ...)
+//  4. store     (GS ( k pL pH cn fn data)
+//  5. print     (GS ( k ...)
 func (b *Builder) QRCode(data string, module int, ecc QRECC) *Builder {
 	if module < 1 {
 		module = 4
@@ -71,10 +71,10 @@ const (
 type BarcodeHRI int
 
 const (
-	BarcodeHRINone   BarcodeHRI = 0
-	BarcodeHRIAbove  BarcodeHRI = 1
-	BarcodeHRIBelow  BarcodeHRI = 2
-	BarcodeHRIBoth   BarcodeHRI = 3
+	BarcodeHRINone  BarcodeHRI = 0
+	BarcodeHRIAbove BarcodeHRI = 1
+	BarcodeHRIBelow BarcodeHRI = 2
+	BarcodeHRIBoth  BarcodeHRI = 3
 )
 
 // Barcode prints a 1-D barcode. `height` is in dots (default 100, max 255),
