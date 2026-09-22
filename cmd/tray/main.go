@@ -63,7 +63,7 @@ func onReady() {
 	mTitle.Disable()
 	systray.AddSeparator()
 
-	mPrintersHdr = systray.AddMenuItem("Imprimantes : —", "")
+	mPrintersHdr = systray.AddMenuItem("Imprimantes : -", "")
 	mPrintersHdr.Disable()
 	// Pre-allocate a pool of menu items we update later. Eight is plenty.
 	for i := 0; i < 8; i++ {
@@ -198,7 +198,7 @@ func setOffline() {
 	systray.SetTemplateIcon(iconRed, iconRed)
 	systray.SetTooltip("Print Bridge : agent introuvable")
 	mTitle.SetTitle("Print Bridge : agent introuvable")
-	mPrintersHdr.SetTitle("Imprimantes : —")
+	mPrintersHdr.SetTitle("Imprimantes : -")
 	for _, it := range mPrintersItems {
 		it.Hide()
 	}
