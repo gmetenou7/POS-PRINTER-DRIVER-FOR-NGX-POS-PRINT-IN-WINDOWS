@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"go.bug.st/serial"
-	"go.bug.st/serial/enumerator"
 )
 
 // Port describes one enumerated COM port plus, when available, the
@@ -26,27 +25,6 @@ type Port struct {
 
 // List enumerates available serial ports with extra USB metadata when
 // the underlying device is a USB-to-Serial converter.
-func List() ([]Port, error) {
-	infos, err := enumerator.GetDetailedPortsList()
-	if err != nil {
-		return nil, fmt.Errorf("list COM ports: %w", err)
-	}
-	out := make([]Port, 0, len(infos))
-	for _, i := range infos {
-		out = append(out, Port{
-			Name:        i.Name,
-			Description: i.Product,
-			IsUSB:       i.IsUSB,
-			VID:         i.VID,
-			PID:         i.PID,
-		})
-	}
-	return out, nil
-}
-
-// Print opens the COM port at the given baud rate and writes the bytes.
-// 9600 8N1 is the most common default for ESC/POS thermal printers; some
-// run at 19200 or 38400, callers can override.
 func Print(portName string, baud int, data []byte) (int, error) {
 	if baud <= 0 {
 		baud = 9600

@@ -574,6 +574,28 @@ func withCORS(allowed []string, next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		w.Header().Set("Access-Control-Max-Age", "600")
+
+		// Acces au reseau local (Private Network Access).
+		//
+		// Une page servie depuis un site public qui appelle une adresse locale, 127.0.0.1 ou
+		// localhost, declenche chez Chrome un prevol portant l'en-tete
+		// Access-Control-Request-Private-Network. Si la reponse ne l'autorise pas
+		// explicitement, la requete est refusee, et la page ne voit qu'un echec reseau sans
+		// cause lisible.
+		//
+		// C'est exactement la difference entre un poste de developpement, ou la page vient
+		// deja de localhost et n'est donc pas un site public, et une application deployee en
+		// HTTPS : la meme installation cesse de repondre sans que rien n'ait change sur la
+		// machine. Le cas s'observe comme « aucune imprimante pilotee par ce poste » alors
+		// que l'agent tourne.
+		//
+		// Autoriser ce prevol ne relache rien de plus que le CORS deja en place : c'est la
+		// meme liste d'origines qui decide, cet en-tete ne fait que lever un refus
+		// supplementaire propre aux adresses locales.
+		if r.Header.Get("Access-Control-Request-Private-Network") == "true" {
+			w.Header().Set("Access-Control-Allow-Private-Network", "true")
+		}
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

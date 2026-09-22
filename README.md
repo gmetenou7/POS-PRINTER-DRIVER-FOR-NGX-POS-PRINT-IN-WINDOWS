@@ -72,6 +72,8 @@ Toutes les phases sont livrées. L'agent supporte cinq canaux de communication e
 | Installeur double-cliquable (`Install.cmd` auto-élève en admin) | ✅ |
 | Script de release (ZIP autonome, ~5.9 MB) | ✅ |
 | Impression de documents sous Linux et macOS via CUPS (`lp`, `lpstat`, `lpoptions`) | ✅ |
+| Prévol d'accès au réseau local autorisé (appel depuis un site public en HTTPS) | ✅ |
+| Compilation vérifiée pour Windows, Linux et macOS | ✅ |
 | Lecture des capacités du pilote sous CUPS (formats, bacs, recto-verso, couleur) | ✅ |
 | Chaque appel au système borné dans le temps (6 s en lecture, 60 s à l'impression) | ✅ |
 
@@ -281,6 +283,26 @@ partout :
 | Imprimer une page rendue | `lp` avec `-o fit-to-page` |
 | Imprimer un flux ESC/POS | `lp -o raw` |
 
+**Le port série se lit moins finement sous macOS.** La bibliothèque d'énumération détaillée, qui
+rend la description du port et son couple VID/PID, n'a pas d'implémentation pour macOS : l'inclure
+empêchait le paquet de compiler, et avec lui l'agent tout entier. macOS se rabat donc sur
+l'énumération simple, qui rend les noms de périphériques `/dev/cu.*` et rien d'autre. Ce qui se
+perd est la reconnaissance automatique d'une imprimante thermique série par son modèle : sur ce
+système, il faut désigner le port. Windows et Linux gardent l'énumération détaillée.
+
+### Construire pour les trois systèmes
+
+```bash
+GOOS=windows go build -o bin/print-bridge.exe ./cmd/agent
+GOOS=linux   go build -o bin/print-bridge     ./cmd/agent
+GOOS=darwin  go build -o bin/print-bridge-mac ./cmd/agent
+```
+
+`cmd/setup` et `cmd/tray` ne se construisent que pour Windows : l'un pose le service et le
+certificat, l'autre est l'icône de zone de notification, et ni l'un ni l'autre n'a d'équivalent
+ailleurs. Hors Windows, l'agent se lance à la main ou par le gestionnaire de services du
+système.
+
 Les options voyagent traduites, parce que CUPS raisonne en mots-clés là où Windows raisonne en
 numéros : la couleur devient `print-color-mode=color` ou `monochrome`, le recto-verso devient
 `sides=two-sided-long-edge` ou `short-edge`, le format devient `media=A4` et le bac
@@ -296,6 +318,28 @@ pilote jetterait en silence.
 options d'une file sont gardées cinq minutes. Sans ces bornes, une file déclarée dont
 l'imprimante est débranchée laisse `lpoptions` attendre, et l'agent attend avec lui : côté
 navigateur, cela se voit comme une recherche d'imprimantes qui tourne sans fin.
+
+### Appel depuis un site public : deux autorisations, pas une
+
+Une page servie depuis un site public qui appelle une adresse locale se heurte à **deux** refus
+distincts, et il faut lever les deux. Le symptôme est le même dans les deux cas, une liste
+d'imprimantes vide, alors que l'agent tourne et que l'imprimante est prête.
+
+**Du côté du site**, sa politique de sécurité de contenu doit déclarer les adresses de l'agent
+dans `connect-src`, en production comme ailleurs :
+
+```
+connect-src 'self' … http://127.0.0.1:19100 https://localhost:19101
+                     http://127.0.0.1:19102 https://localhost:19103
+```
+
+**Du côté de l'agent**, Chrome envoie un prévol portant l'en-tête
+`Access-Control-Request-Private-Network` dès qu'une page publique vise une adresse locale. La
+réponse doit l'autoriser explicitement, ce que `withCORS` fait désormais. Autoriser ce prévol ne
+relâche rien de plus que le CORS déjà en place : c'est la même liste d'origines qui décide.
+
+Ces deux refus ne se voient que dans la console du navigateur. Pour qui ne l'ouvre pas, la panne
+est muette et ressemble à un problème d'imprimante.
 
 ## Comment Print Bridge contourne le dialogue Windows
 
