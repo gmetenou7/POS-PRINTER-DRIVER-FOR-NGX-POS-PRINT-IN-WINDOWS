@@ -381,6 +381,26 @@ imprimer une page.
 
 ou double-clic sur `Uninstall.cmd` depuis l'archive de release.
 
+## Embarquer l'agent dans une application
+
+Une application de bureau peut livrer `print-bridge.exe` avec elle et le lancer elle-même, sans
+service ni droits administrateur (c'est ce que fait MonGerant) :
+
+```
+print-bridge.exe -data <dossier> -no-https -parent-pid <pid de l'application>
+```
+
+- `-data` loge le journal et les certificats dans un dossier de l'utilisateur ; celui d'un service
+  installé, sous ProgramData, n'est pas toujours inscriptible.
+- `-no-https` laisse le port 19101 : son certificat ne peut être approuvé sans administrateur, et
+  `http://127.0.0.1:19100` suffit, les navigateurs l'acceptant depuis une page HTTPS.
+- `-parent-pid` arrête l'agent quand l'application se termine, plantage compris. Windows ne tue
+  pas les enfants d'un processus mort, et un agent orphelin garderait le port.
+
+`GET /health` rend la version de l'agent (`"version": "1.0.4"`, ou `"dev"` pour une compilation
+locale), ce qui permet à l'application de savoir s'il faut le mettre à jour. Chaque release publie
+l'agent seul, `print-bridge.exe`, signé, à côté de l'installeur.
+
 ## Signature du code
 
 Windows bloque un exécutable non signé : Smart App Control le refuse, SmartScreen avertit. Les

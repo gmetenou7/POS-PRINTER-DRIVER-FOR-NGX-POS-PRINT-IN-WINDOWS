@@ -28,6 +28,7 @@ import (
 
 	"github.com/gmetenou7/print-bridge/internal/backends/cups"
 	"github.com/gmetenou7/print-bridge/internal/backends/winspool"
+	"github.com/gmetenou7/print-bridge/internal/buildinfo"
 	"github.com/gmetenou7/print-bridge/internal/config"
 	"github.com/gmetenou7/print-bridge/internal/escpos"
 	"github.com/gmetenou7/print-bridge/internal/printers"
@@ -96,13 +97,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service":   "print-bridge",
-		"version":   "0.1.0",
-		"endpoints": []string{"/health", "/printers", "/print", "/print/text"},
+		"version":   buildinfo.Version,
+		"endpoints": []string{"/health", "/printers", "/printers/{id}/capabilities", "/print", "/print/text", "/print-document"},
 	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "ts": time.Now().Unix()})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "ts": time.Now().Unix(), "version": buildinfo.Version})
 }
 
 func (s *Server) handlePrinters(w http.ResponseWriter, r *http.Request) {

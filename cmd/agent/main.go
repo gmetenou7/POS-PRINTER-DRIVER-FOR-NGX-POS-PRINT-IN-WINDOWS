@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/gmetenou7/print-bridge/internal/config"
@@ -23,6 +24,9 @@ const (
 func main() {
 	cmd := flag.String("cmd", "", "Commande : install | uninstall | start | stop | status | run | trust-ca | untrust-ca | gen-certs")
 	port := flag.Int("port", 0, "Forcer le port HTTP (défaut 19100)")
+	data := flag.String("data", "", "Dossier du journal et des certificats (défaut : dossier PrintBridge de ProgramData)")
+	noHTTPS := flag.Bool("no-https", false, "Ne pas ouvrir le port HTTPS")
+	parentPID := flag.Int("parent-pid", 0, "S'arrêter quand ce processus se termine")
 	flag.Parse()
 
 	switch *cmd {
@@ -61,18 +65,38 @@ func main() {
 	case "run":
 		runAsService()
 	default:
-		runConsole(*port)
+		runConsole(*port, *data, *noHTTPS, *parentPID)
 	}
 }
 
-func runConsole(portOverride int) {
+// runConsole lance l'agent au premier plan.
+//
+// C'est aussi ainsi qu'une application l'embarque, sans service ni droits
+// administrateur : `-data` loge journal et certificats chez l'utilisateur, le
+// dossier ProgramData d'un service installe n'etant pas toujours inscriptible ;
+// `-no-https` laisse le port HTTPS, dont le certificat ne peut etre approuve
+// sans administrateur ; `-parent-pid` arrete l'agent avec l'application.
+func runConsole(portOverride int, dataDir string, noHTTPS bool, parentPID int) {
 	cfg := config.Default()
 	if portOverride > 0 {
 		cfg.Port = portOverride
 	}
+	if dataDir != "" {
+		cfg.LogPath = filepath.Join(dataDir, "agent.log")
+		cfg.CertDir = filepath.Join(dataDir, "certs")
+	}
+	if noHTTPS {
+		cfg.HTTPSPort = 0
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	if parentPID > 0 {
+		if err := watchParent(parentPID, cancel); err != nil {
+			log.Fatalf("Processus parent %d introuvable : %v", parentPID, err)
+		}
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)

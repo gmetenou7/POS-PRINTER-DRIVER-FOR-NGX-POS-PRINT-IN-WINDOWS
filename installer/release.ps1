@@ -32,7 +32,10 @@ $PayloadDir  = Join-Path $Root "cmd\setup\payload"
 if ($Step -ne "package") {
     New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     Write-Host "Compilation de l'agent (print-bridge.exe)..." -ForegroundColor Cyan
-    & go build -trimpath -ldflags "-s -w" -o (Join-Path $BinDir "print-bridge.exe") .\cmd\agent
+    # La version est inscrite dans l'agent, qui la rend sur /health : une application qui
+    # l'embarque s'en sert pour savoir s'il faut le mettre a jour.
+    $VersionFlag = "-X github.com/gmetenou7/print-bridge/internal/buildinfo.Version=$Version"
+    & go build -trimpath -ldflags "-s -w $VersionFlag" -o (Join-Path $BinDir "print-bridge.exe") .\cmd\agent
     if ($LASTEXITCODE -ne 0) { throw "Build agent échoué" }
 
     Write-Host "Compilation du tray (print-bridge-tray.exe)..." -ForegroundColor Cyan
