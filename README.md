@@ -98,6 +98,12 @@ Toutes les phases sont livrées. L'agent supporte cinq canaux de communication e
 2. **Double-cliquer** dessus → UAC apparaît → accepter
 3. Suivre la fenêtre de progression (~5 secondes)
 
+L'installeur n'est pas encore signé (voir [Signature du code](#signature-du-code)). Si Windows
+affiche « Windows a protégé votre ordinateur », cliquer sur **Informations complémentaires** puis
+**Exécuter quand même**. Si **Smart App Control** le bloque, il faut le désactiver sur le poste
+(Sécurité Windows → Contrôle des applications et du navigateur), ce que Windows ne permet en
+général pas d'annuler sans réinstaller le système.
+
 **Option B, Archive ZIP**
 
 1. Télécharger `print-bridge-X.Y.Z-windows-amd64.zip`
@@ -128,7 +134,7 @@ go build -ldflags "-H=windowsgui" -o bin\print-bridge-tray.exe .\cmd\tray
 ```
 
 Une release construite ainsi n'est **pas signée** : Smart App Control la bloque, et SmartScreen
-avertit. Les releases distribuées passent par la CI, voir [Signature du code](#signature-du-code).
+avertit. Voir [Signature du code](#signature-du-code).
 
 ## Utilisation depuis un navigateur
 
@@ -384,7 +390,7 @@ ou double-clic sur `Uninstall.cmd` depuis l'archive de release.
 ## Embarquer l'agent dans une application
 
 Une application de bureau peut livrer `print-bridge.exe` avec elle et le lancer elle-même, sans
-service ni droits administrateur (c'est ce que fait MonGerant) :
+service ni droits administrateur :
 
 ```
 print-bridge.exe -data <dossier> -no-https -parent-pid <pid de l'application>
@@ -398,19 +404,19 @@ print-bridge.exe -data <dossier> -no-https -parent-pid <pid de l'application>
   pas les enfants d'un processus mort, et un agent orphelin garderait le port.
 
 `GET /health` rend la version de l'agent (`"version": "1.0.4"`, ou `"dev"` pour une compilation
-locale), ce qui permet à l'application de savoir s'il faut le mettre à jour. Chaque release publie
-l'agent seul, `print-bridge.exe`, signé, à côté de l'installeur.
+locale), ce qui permet à l'application de savoir s'il faut le mettre à jour. Le workflow de
+release publie aussi l'agent seul, `print-bridge.exe`, à côté de l'installeur.
 
 ## Signature du code
 
-Windows bloque un exécutable non signé : Smart App Control le refuse, SmartScreen avertit. Les
-releases publiées sont donc toutes signées, et construites uniquement par GitHub Actions
-([`.github/workflows/release.yml`](.github/workflows/release.yml)), à partir du code de ce dépôt.
+Windows bloque un exécutable non signé : Smart App Control le refuse, SmartScreen avertit.
+**Les installeurs actuels ne sont pas signés.** La signature est prévue par le programme gratuit
+de [SignPath Foundation](https://signpath.org/) pour les projets open source, dont l'acceptation
+est en attente. La chaîne est prête : les releases seront construites uniquement par GitHub
+Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)), à partir du code de ce
+dépôt, et signées par SignPath.
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
-[SignPath Foundation](https://signpath.org/).
-
-Ce qui est signé : l'agent (`print-bridge.exe`), le tray (`print-bridge-tray.exe`), le script
+Ce qui sera signé : l'agent (`print-bridge.exe`), le tray (`print-bridge-tray.exe`), le script
 d'installation (`install.ps1`) et l'installeur (`PrintBridge-Setup-X.Y.Z.exe`). Le script l'est
 aussi parce que, sous Smart App Control, un script PowerShell non signé tourne en mode de langage
 restreint et l'installation échouerait.
