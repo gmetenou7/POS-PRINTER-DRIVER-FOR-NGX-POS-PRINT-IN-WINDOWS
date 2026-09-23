@@ -191,17 +191,16 @@ func runInstaller(workdir string) error {
 	if _, err := os.Stat(ps1); err != nil {
 		return fmt.Errorf("install.ps1 absent du payload : %w", err)
 	}
-	// Force the PowerShell child process to emit UTF-8 on its output streams.
-	// Without this, PowerShell 5.1 defaults to whatever [Console]::OutputEncoding
-	// happens to be (usually OEM 437/850) and our pipe receives mojibake.
+	// The script is run with -File, never through -Command. Under Smart App
+	// Control, inline commands cannot carry a signature and run in constrained
+	// language mode, where the .NET calls they would need fail. install.ps1 is
+	// signed, runs in full language mode, and switches its own output to UTF-8
+	// so our pipe does not receive mojibake.
 	cmd := exec.Command(
 		"powershell.exe",
 		"-NoProfile",
 		"-ExecutionPolicy", "Bypass",
-		"-Command",
-		"[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); "+
-			"[Console]::InputEncoding = [System.Text.UTF8Encoding]::new(); "+
-			"& '"+ps1+"'",
+		"-File", ps1,
 	)
 	cmd.Dir = workdir
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: false}

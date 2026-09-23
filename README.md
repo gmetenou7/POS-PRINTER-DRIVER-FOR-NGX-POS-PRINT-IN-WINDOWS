@@ -123,9 +123,12 @@ go build -ldflags "-H=windowsgui" -o bin\print-bridge-tray.exe .\cmd\tray
 # Tester sans installer (console)
 .\bin\print-bridge.exe
 
-# Produire un ZIP + setup.exe de release stripped
-.\installer\release.ps1 -Version 1.0.3
+# Produire un ZIP + setup.exe de release stripped (non signes, pour tester)
+.\installer\release.ps1 -Version 1.0.4
 ```
+
+Une release construite ainsi n'est **pas signée** : Smart App Control la bloque, et SmartScreen
+avertit. Les releases distribuées passent par la CI, voir [Signature du code](#signature-du-code).
 
 ## Utilisation depuis un navigateur
 
@@ -377,6 +380,49 @@ imprimer une page.
 ```
 
 ou double-clic sur `Uninstall.cmd` depuis l'archive de release.
+
+## Signature du code
+
+Windows bloque un exécutable non signé : Smart App Control le refuse, SmartScreen avertit. Les
+releases publiées sont donc toutes signées, et construites uniquement par GitHub Actions
+([`.github/workflows/release.yml`](.github/workflows/release.yml)), à partir du code de ce dépôt.
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
+
+Ce qui est signé : l'agent (`print-bridge.exe`), le tray (`print-bridge-tray.exe`), le script
+d'installation (`install.ps1`) et l'installeur (`PrintBridge-Setup-X.Y.Z.exe`). Le script l'est
+aussi parce que, sous Smart App Control, un script PowerShell non signé tourne en mode de langage
+restreint et l'installation échouerait.
+
+### Politique de signature
+
+- **Auteur et relecteur** : [gmetenou7](https://github.com/gmetenou7), seul mainteneur ; toute
+  modification entre dans `main` par un commit de ce compte.
+- **Approbateur** : [gmetenou7](https://github.com/gmetenou7). Chaque demande de signature est
+  approuvée à la main dans SignPath avant que le certificat ne soit utilisé.
+- **Ce qui est signé** : uniquement les binaires compilés par le workflow de release, depuis un tag
+  `vX.Y.Z` de ce dépôt. Aucun binaire compilé ailleurs n'est soumis à la signature.
+
+### Confidentialité
+
+Print Bridge n'envoie aucune donnée hors de la machine. L'agent écoute uniquement sur
+`127.0.0.1`, et ne contacte le réseau local que pour trouver et joindre les imprimantes.
+
+### Publier une version
+
+```powershell
+git tag v1.0.4
+git push origin v1.0.4
+```
+
+Le workflow compile, fait signer, vérifie chaque signature et publie la release. Tant que SignPath
+n'est pas configuré (secret `SIGNPATH_API_TOKEN` et variable `SIGNPATH_ORGANIZATION_ID` du dépôt),
+il construit les livrables et les dépose en artefact, mais ne publie rien.
+
+Les configurations d'artefacts à déclarer dans SignPath sont dans
+[`.signpath/artifact-configurations/`](.signpath/artifact-configurations/) : `binaries` et
+`installer`, sous la politique de signature `release-signing`.
 
 ## Licence
 

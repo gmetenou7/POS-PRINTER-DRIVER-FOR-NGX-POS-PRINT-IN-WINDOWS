@@ -1,0 +1,187 @@
+# Release signee de Print Bridge.
+#
+# Windows (Smart App Control, SmartScreen) bloque un executable non signe. Chaque release
+# est donc construite ici, par GitHub Actions, puis signee par SignPath, dans cet ordre :
+#
+#   1. compile l'agent et le tray
+#   2. fait signer l'agent, le tray et install.ps1
+#   3. emballe le ZIP et l'installeur avec ces fichiers signes
+#   4. fait signer l'installeur
+#   5. verifie chaque signature, puis publie la release
+#
+# L'ordre compte : l'installeur embarque l'agent, et signer l'installeur seul laisserait
+# l'agent qu'il installe non signe, donc bloque au demarrage du service.
+#
+# Sans SignPath configure (secret SIGNPATH_API_TOKEN), tout est construit et depose en
+# artefact pour inspection, mais rien n'est publie : une release non signee serait bloquee
+# chez les clients.
+#
+# Declenchement : pousser un tag `vX.Y.Z`, ou lancer le workflow a la main avec une version
+# (dans ce cas, construction seulement, sans publication).
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version a construire, sans le v (ex. 1.0.4)"
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+      SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+      SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG || 'print-bridge' }}
+      SIGNPATH_POLICY_SLUG: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Version
+        id: version
+        shell: pwsh
+        run: |
+          $v = if ("${{ github.event_name }}" -eq "push") { "${{ github.ref_name }}".TrimStart("v") } else { "${{ inputs.version }}" }
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Version invalide : '$v'" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      # --- 1) Compilation ---------------------------------------------------
+
+      - name: Compiler l'agent et le tray
+        shell: pwsh
+        run: .\installer\release.ps1 -Version ${{ steps.version.outputs.version }} -Step compile
+
+      # --- 2) Signature des binaires ----------------------------------------
+
+      - name: Preparer les fichiers a signer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path to-sign | Out-Null
+          Copy-Item bin\print-bridge.exe, bin\print-bridge-tray.exe, installer\install.ps1 to-sign\
+
+      - name: Deposer les binaires non signes
+        id: unsigned-binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-binaries
+          path: to-sign/
+          if-no-files-found: error
+
+      - name: Signer les binaires
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ env.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: binaries
+          github-artifact-id: ${{ steps.unsigned-binaries.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-binaries
+
+      - name: Reprendre les binaires signes
+        if: env.SIGNPATH_API_TOKEN != ''
+        shell: pwsh
+        run: |
+          Copy-Item signed-binaries\print-bridge.exe, signed-binaries\print-bridge-tray.exe bin\ -Force
+          Copy-Item signed-binaries\install.ps1 installer\ -Force
+
+      # --- 3) Emballage -----------------------------------------------------
+
+      - name: Assembler le ZIP et l'installeur
+        shell: pwsh
+        run: .\installer\release.ps1 -Version ${{ steps.version.outputs.version }} -Step package
+
+      # --- 4) Signature de l'installeur -------------------------------------
+
+      # Nom fixe pour la signature : la configuration SignPath designe le fichier par son nom.
+      - name: Preparer l'installeur a signer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path setup-to-sign | Out-Null
+          Copy-Item "dist\PrintBridge-Setup-${{ steps.version.outputs.version }}.exe" setup-to-sign\PrintBridge-Setup.exe
+
+      - name: Deposer l'installeur non signe
+        id: unsigned-setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-setup
+          path: setup-to-sign/
+          if-no-files-found: error
+
+      - name: Signer l'installeur
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ env.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.unsigned-setup.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-setup
+
+      - name: Reprendre l'installeur signe
+        if: env.SIGNPATH_API_TOKEN != ''
+        shell: pwsh
+        run: Copy-Item signed-setup\PrintBridge-Setup.exe "dist\PrintBridge-Setup-${{ steps.version.outputs.version }}.exe" -Force
+
+      # --- 5) Verification et publication ------------------------------------
+
+      - name: Verifier les signatures
+        if: env.SIGNPATH_API_TOKEN != ''
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          Expand-Archive "dist\print-bridge-$v-windows-amd64.zip" zip-check
+          $files = @(
+            "dist\PrintBridge-Setup-$v.exe",
+            "zip-check\print-bridge.exe",
+            "zip-check\print-bridge-tray.exe",
+            "zip-check\install.ps1"
+          )
+          foreach ($f in $files) {
+            $s = Get-AuthenticodeSignature $f
+            if ($s.Status -ne "Valid") { throw "$f : signature $($s.Status)" }
+            Write-Host "$f : signe par $($s.SignerCertificate.Subject)"
+          }
+
+      - name: Deposer les livrables
+        uses: actions/upload-artifact@v4
+        with:
+          name: print-bridge-${{ steps.version.outputs.version }}
+          path: |
+            dist/PrintBridge-Setup-${{ steps.version.outputs.version }}.exe
+            dist/print-bridge-${{ steps.version.outputs.version }}-windows-amd64.zip
+
+      - name: Signaler l'absence de signature
+        if: env.SIGNPATH_API_TOKEN == ''
+        shell: pwsh
+        run: |
+          $m = "SignPath n'est pas configure : livrables NON signes, deposes en artefact seulement. Aucune release publiee."
+          Write-Host "::warning::$m"
+          $m >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Publier la release
+        if: env.SIGNPATH_API_TOKEN != '' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/PrintBridge-Setup-${{ steps.version.outputs.version }}.exe
+            dist/print-bridge-${{ steps.version.outputs.version }}-windows-amd64.zip
+          generate_release_notes: true

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Artefact "binaries" du workflow de release : l'agent, le tray et le script d'installation.
+     Le script est signe aussi : sous Smart App Control, un script PowerShell non signe tourne en
+     mode de langage restreint, et l'installation echouerait. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="print-bridge.exe">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="print-bridge-tray.exe">
+      <authenticode-sign />
+    </pe-file>
+    <powershell-file path="install.ps1">
+      <authenticode-sign />
+    </powershell-file>
+  </zip-file>
+</artifact-configuration>

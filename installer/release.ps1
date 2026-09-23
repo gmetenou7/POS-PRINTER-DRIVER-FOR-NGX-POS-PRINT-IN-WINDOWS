@@ -1,13 +1,20 @@
-# Print Bridge, script de release.
+﻿# Print Bridge, script de release.
 # Compile les binaires, assemble le payload et produit deux livrables :
 #   1. dist\print-bridge-X.Y.Z-windows-amd64.zip  (archive classique)
 #   2. dist\PrintBridge-Setup-X.Y.Z.exe           (installeur single-EXE)
 #
 # Usage : .\installer\release.ps1 -Version 1.0.0
+#
+# -Step decoupe la release pour la signature en CI (.github/workflows/release.yml) :
+#   compile : compile seulement l'agent et le tray dans bin\
+#   package : assemble le ZIP et l'installeur a partir de bin\ tel quel, sans recompiler,
+#             pour embarquer les binaires signes entre-temps
+#   all     : les deux (defaut, usage local)
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$Version
+    [Parameter(Mandatory)][string]$Version,
+    [ValidateSet("all", "compile", "package")][string]$Step = "all"
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,21 +27,25 @@ $ZipPath     = Join-Path $DistDir "print-bridge-$Version-windows-amd64.zip"
 $SetupPath   = Join-Path $DistDir "PrintBridge-Setup-$Version.exe"
 $PayloadDir  = Join-Path $Root "cmd\setup\payload"
 
+# --- 1) Compile the agent + tray ----------------------------------------
+
+if ($Step -ne "package") {
+    New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+    Write-Host "Compilation de l'agent (print-bridge.exe)..." -ForegroundColor Cyan
+    & go build -trimpath -ldflags "-s -w" -o (Join-Path $BinDir "print-bridge.exe") .\cmd\agent
+    if ($LASTEXITCODE -ne 0) { throw "Build agent échoué" }
+
+    Write-Host "Compilation du tray (print-bridge-tray.exe)..." -ForegroundColor Cyan
+    & go build -trimpath -ldflags "-s -w -H=windowsgui" -o (Join-Path $BinDir "print-bridge-tray.exe") .\cmd\tray
+    if ($LASTEXITCODE -ne 0) { throw "Build tray échoué" }
+}
+if ($Step -eq "compile") { return }
+
 # Clean previous build
 foreach ($p in @($Stage, $ZipPath, $SetupPath)) {
     if (Test-Path $p) { Remove-Item -Recurse -Force $p }
 }
 New-Item -ItemType Directory -Path $Stage -Force | Out-Null
-
-# --- 1) Compile the agent + tray ----------------------------------------
-
-Write-Host "Compilation de l'agent (print-bridge.exe)..." -ForegroundColor Cyan
-& go build -trimpath -ldflags "-s -w" -o (Join-Path $BinDir "print-bridge.exe") .\cmd\agent
-if ($LASTEXITCODE -ne 0) { throw "Build agent échoué" }
-
-Write-Host "Compilation du tray (print-bridge-tray.exe)..." -ForegroundColor Cyan
-& go build -trimpath -ldflags "-s -w -H=windowsgui" -o (Join-Path $BinDir "print-bridge-tray.exe") .\cmd\tray
-if ($LASTEXITCODE -ne 0) { throw "Build tray échoué" }
 
 # --- 2) Build the ZIP package -------------------------------------------
 

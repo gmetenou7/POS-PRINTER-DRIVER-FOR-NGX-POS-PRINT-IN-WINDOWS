@@ -11,6 +11,13 @@ param(
     [switch]$Uninstall
 )
 
+# Sorties en UTF-8, pour que l'installeur qui lit ce script par un tube recoive des accents
+# lisibles. Ces reglages vivent ici et non sur la ligne de commande de l'installeur : sous
+# Smart App Control, une commande en ligne ne peut pas etre signee et tourne en mode de
+# langage restreint, ou ces appels echouent. Ce script-ci est signe, il tourne en mode complet.
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+[Console]::InputEncoding  = [System.Text.UTF8Encoding]::new()
+
 function Assert-Admin {
     $id  = [Security.Principal.WindowsIdentity]::GetCurrent()
     $pri = New-Object Security.Principal.WindowsPrincipal($id)
