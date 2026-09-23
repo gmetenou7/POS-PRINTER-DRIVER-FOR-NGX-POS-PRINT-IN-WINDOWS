@@ -50,6 +50,35 @@ func IsLikelyThermal(name, driver, vid string) bool {
 	return false
 }
 
+// officeHostPrefixes are the network names office printer makers give their
+// machines out of the box: "HP6A545A", "NPI2F1C3B" (HP), "BRN30055C..."
+// (Brother), "SEC30CDA7..." (Samsung). These answer on port 9100 too, since
+// JetDirect is theirs, but they expect PCL or PostScript, not ESC/POS.
+var officeHostPrefixes = []string{
+	"hp", "npi", "brn", "brw", "canon", "lexmark", "xerox", "kyocera", "ricoh", "sec", "konica",
+}
+
+// IsLikelyThermalNetwork decides whether a printer answering on port 9100 is a
+// receipt printer. Port 9100 alone used to settle it, which sent an office
+// inkjet into the ticket list, where it would print ESC/POS as garbage.
+//
+// A thermal fingerprint in the name wins first ("HPRT" is a receipt brand that
+// starts like HP); then an office maker's default name rules it out; anything
+// else keeps the old assumption, since most unnamed raw-9100 devices on a shop
+// network are indeed receipt printers.
+func IsLikelyThermalNetwork(hostname string) bool {
+	if IsLikelyThermal(hostname, "", "") {
+		return true
+	}
+	h := strings.ToLower(strings.TrimSpace(hostname))
+	for _, prefix := range officeHostPrefixes {
+		if strings.HasPrefix(h, prefix) {
+			return false
+		}
+	}
+	return true
+}
+
 // VendorName returns the human-readable vendor for a VID, or empty string.
 func VendorName(vid string) string {
 	return thermalVendorVIDs[strings.ToUpper(strings.TrimSpace(vid))]

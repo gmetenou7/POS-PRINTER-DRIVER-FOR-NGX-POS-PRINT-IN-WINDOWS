@@ -83,9 +83,9 @@ func idFor(ch printers.Channel, key string) string {
 	return string(ch) + "-" + hex.EncodeToString(h[:6])
 }
 
-// FromNetwork turns network.Found scan results into Printer entries. Network
-// printers replying on port 9100 are assumed thermal-capable (the protocol
-// is essentially exclusive to raw-mode receipt/label printers).
+// FromNetwork turns network.Found scan results into Printer entries. Whether
+// one is a receipt printer is judged from its name: office printers answer on
+// port 9100 too.
 func FromNetwork(found []network.Found) []printers.Printer {
 	now := time.Now().UTC()
 	out := make([]printers.Printer, 0, len(found))
@@ -102,7 +102,7 @@ func FromNetwork(found []network.Found) []printers.Printer {
 			Name:       name,
 			Channel:    printers.ChannelNetwork,
 			Port:       net.JoinHostPort(f.Host, itoa(f.Port)),
-			IsThermal:  true, // port 9100 is overwhelmingly thermal/raw
+			IsThermal:  printers.IsLikelyThermalNetwork(name),
 			Status:     printers.StatusReady,
 			DetectedAt: now,
 		}
@@ -183,27 +183,52 @@ func FromLibUSB(devs []libusb.Device) []printers.Printer {
 	return out
 }
 
-// DedupWinspoolNetwork removes winspool entries whose port is an IP that
-// also appears in the network-discovered list. The network entry is
-// preferred because it bypasses the spooler entirely.
+// DedupWinspoolNetwork keeps one entry for a printer that is both installed
+// in Windows on an IP port and found by the network scan.
+//
+// A receipt printer keeps its network entry, which writes to port 9100 and
+// bypasses the spooler. Any other printer keeps its Windows entry: only a
+// printer with a driver can print a page document, and dropping it used to
+// make an office printer vanish from the document print list the moment it
+// was reachable on the network.
 func DedupWinspoolNetwork(ws, net []printers.Printer) []printers.Printer {
-	ips := make(map[string]bool, len(net))
-	for _, n := range net {
-		host, _, err := splitHostPort(n.Port)
-		if err == nil {
-			ips[host] = true
+	byIP := make(map[string]int, len(net))
+	for i, n := range net {
+		if host, _, err := splitHostPort(n.Port); err == nil {
+			byIP[host] = i
 		}
 	}
+	dropNet := make(map[int]bool)
 	out := make([]printers.Printer, 0, len(ws)+len(net))
 	for _, w := range ws {
-		port := strings.TrimPrefix(strings.ToLower(w.Port), "ip_")
-		if ips[port] {
+		i, shared := byIP[winspoolPortIP(w.Port)]
+		if shared && w.IsThermal {
 			continue
+		}
+		if shared {
+			dropNet[i] = true
 		}
 		out = append(out, w)
 	}
-	out = append(out, net...)
+	for i, n := range net {
+		if !dropNet[i] {
+			out = append(out, n)
+		}
+	}
 	return out
+}
+
+// winspoolPortIP extracts the address from a Windows TCP/IP port name:
+// "IP_192.168.1.20", "192.168.1.20" or "192.168.1.20_1". Empty otherwise.
+func winspoolPortIP(port string) string {
+	p := strings.TrimPrefix(strings.ToLower(port), "ip_")
+	if i := strings.IndexByte(p, '_'); i >= 0 {
+		p = p[:i]
+	}
+	if net.ParseIP(p) == nil {
+		return ""
+	}
+	return p
 }
 
 func splitHostPort(s string) (string, string, error) {

@@ -363,6 +363,13 @@ La base interne reconnaît les VID USB et les noms de modèle des fabricants cou
 
 Si ta marque n'est pas reconnue, ajoute son VID dans `internal/printers/thermal_db.go` et ouvre une PR.
 
+Sur le réseau, répondre sur le port 9100 ne suffit pas : les imprimantes de bureau le font aussi.
+Une imprimante dont le nom réseau est celui qu'un fabricant de bureau donne par défaut (`HP…`,
+`NPI…`, `BRN…`, `Canon…`, etc.) n'est pas classée thermique ; elle recevrait de l'ESC/POS et
+imprimerait des caractères sans suite. Et quand une imprimante de bureau est à la fois installée
+dans Windows et trouvée sur le réseau, c'est l'entrée Windows qui est gardée, la seule qui sache
+imprimer une page.
+
 ## Désinstallation
 
 ```powershell
