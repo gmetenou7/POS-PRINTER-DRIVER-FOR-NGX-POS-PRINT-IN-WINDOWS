@@ -95,6 +95,7 @@ Toutes les phases sont livrées. L'agent supporte cinq canaux de communication e
 **Option A, Installeur single-EXE (le plus simple)**
 
 1. Télécharger `PrintBridge-Setup-X.Y.Z.exe` depuis les [releases](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS/releases)
+   (version actuelle : [1.0.4](https://github.com/gmetenou7/POS-PRINTER-DRIVER-FOR-NGX-POS-PRINT-IN-WINDOWS/releases/tag/v1.0.4), publiée en pré-version non signée)
 2. **Double-cliquer** dessus → UAC apparaît → accepter
 3. Suivre la fenêtre de progression (~5 secondes)
 
@@ -444,7 +445,10 @@ git push origin v1.0.4
 
 Le workflow compile, fait signer, vérifie chaque signature et publie la release. Tant que SignPath
 n'est pas configuré (secret `SIGNPATH_API_TOKEN` et variable `SIGNPATH_ORGANIZATION_ID` du dépôt),
-il construit les livrables et les dépose en artefact, mais ne publie rien.
+il construit les livrables, les dépose en artefact et les publie en **pré-release non signée** :
+l'installeur, l'archive ZIP et l'agent seul restent téléchargeables depuis la page des releases,
+et la mention « pré-release » rappelle qu'ils ne sont pas signés. Dès que SignPath est
+configuré, le même tag produit une release normale, signée. C'est ainsi qu'a été publiée la 1.0.4.
 
 Les configurations d'artefacts à déclarer dans SignPath sont dans
 [`.signpath/artifact-configurations/`](.signpath/artifact-configurations/) : `binaries` et
