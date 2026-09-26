@@ -13,8 +13,9 @@
 # l'agent qu'il installe non signe, donc bloque au demarrage du service.
 #
 # Sans SignPath configure (secret SIGNPATH_API_TOKEN), tout est construit et depose en
-# artefact pour inspection, mais rien n'est publie : une release non signee serait bloquee
-# chez les clients.
+# artefact ; sur un tag, les livrables sont en plus publies en PRE-RELEASE marquee « non
+# signee », en attendant l'acceptation par SignPath. Une pre-release n'est pas la cible de
+# /releases/latest, et ses notes rappellent que Windows avertira ou bloquera l'installeur.
 #
 # Declenchement : pousser un tag `vX.Y.Z`, ou lancer le workflow a la main avec une version
 # (dans ce cas, construction seulement, sans publication).
@@ -179,7 +180,7 @@ jobs:
         if: env.SIGNPATH_API_TOKEN == ''
         shell: pwsh
         run: |
-          $m = "SignPath n'est pas configure : livrables NON signes, deposes en artefact seulement. Aucune release publiee."
+          $m = "SignPath n'est pas configure : livrables NON signes. Sur un tag, ils sont publies en pre-release marquee non signee."
           Write-Host "::warning::$m"
           $m >> $env:GITHUB_STEP_SUMMARY
 
@@ -191,4 +192,22 @@ jobs:
             dist/PrintBridge-Setup-${{ steps.version.outputs.version }}.exe
             dist/print-bridge-${{ steps.version.outputs.version }}-windows-amd64.zip
             dist/print-bridge.exe
+          generate_release_notes: true
+
+      - name: Publier une pre-release non signee
+        if: env.SIGNPATH_API_TOKEN == '' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Print Bridge ${{ steps.version.outputs.version }} (non signee)
+          prerelease: true
+          files: |
+            dist/PrintBridge-Setup-${{ steps.version.outputs.version }}.exe
+            dist/print-bridge-${{ steps.version.outputs.version }}-windows-amd64.zip
+            dist/print-bridge.exe
+          body: |
+            **Version non signee.** La signature du code (SignPath Foundation) est en attente.
+            Windows peut afficher « Windows a protege votre ordinateur » : cliquer sur
+            **Informations complementaires** puis **Executer quand meme**. Si Smart App Control
+            est actif sur le poste, il bloque l'installeur : voir la section « Signature du code »
+            du README.
           generate_release_notes: true
