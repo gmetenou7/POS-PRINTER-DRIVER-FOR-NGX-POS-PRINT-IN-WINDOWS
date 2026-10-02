@@ -27,12 +27,13 @@ Print Bridge résout ces trois problèmes en s'intercalant entre le navigateur e
 │   Logiciel de vente (navigateur Chrome/Edge)     │
 │   fetch('https://localhost:19101/print', …)      │
 └──────────────────────┬───────────────────────────┘
-                       │ HTTP + HTTPS + CORS *
+                       │ HTTP + HTTPS, origine autorisée + jeton
                        ▼
 ┌──────────────────────────────────────────────────┐
 │       Print Bridge Agent (service Windows)       │
 │  - détection auto multi-canaux (poll + mDNS)     │
 │  - API REST locale + double serveur HTTP/HTTPS   │
+│  - origines autorisées + jeton d'appairage       │
 │  - cert racine privé installé dans store Windows │
 │  - envoi RAW ESC/POS sans dialogue Windows       │
 │  - builder ESC/POS riche (QR, barcode, image)    │
@@ -76,6 +77,11 @@ Toutes les phases sont livrées. L'agent supporte cinq canaux de communication e
 | Compilation vérifiée pour Windows, Linux et macOS | ✅ |
 | Lecture des capacités du pilote sous CUPS (formats, bacs, recto-verso, couleur) | ✅ |
 | Chaque appel au système borné dans le temps (6 s en lecture, 60 s à l'impression) | ✅ |
+| Liste des origines autorisées, vérifiée par l'agent lui-même avant tout effet | ✅ |
+| Appairage par jeton (`/pair`) exigé pour lister, imprimer ou ouvrir le tiroir | ✅ |
+| Réglages persistants (`config.json`, `-cmd configure`, paramètres de `install.ps1`) | ✅ |
+| Ports de repli 19102 / 19103 quand 19100 / 19101 sont déjà pris | ✅ |
+| Appairage pris en charge par [ngx-pos-print](https://www.npmjs.com/package/ngx-pos-print) 1.3.0+ et par `sdk-js/` | ✅ |
 
 ## Installation
 
@@ -114,9 +120,26 @@ général pas d'annuler sans réinstaller le système.
 Dans les deux cas, l'installeur :
 - Copie les binaires dans `C:\Program Files\PrintBridge\`
 - Enregistre le service Windows (démarrage automatique)
+- Écrit les réglages passés en paramètres dans `C:\ProgramData\PrintBridge\config.json`
 - Génère un certificat racine privé et l'ajoute au store Windows (pour HTTPS sans avertissement)
 - Démarre le service et lance l'icône tray
 - Configure le tray pour démarrer à chaque login
+
+Au premier démarrage, l'agent crée aussi dans `C:\ProgramData\PrintBridge\` le jeton local de
+l'icône tray (`local-token`) et le fichier des appairages (`pairings.json`). Voir
+[Sécurité : origines autorisées et appairage](#sécurité--origines-autorisées-et-appairage).
+
+**Autoriser un autre site web.** Seules les origines de la liste par défaut peuvent parler à
+l'agent. Pour en ajouter, ou changer de ports, passer les réglages au script d'installation :
+
+```powershell
+.\installer\install.ps1 -AllowedOrigins "https://caisse.example.com,http://localhost:4200" `
+                        -HttpPort 19100 -HttpsPort 19101
+```
+
+Les trois paramètres sont facultatifs. `-AllowedOrigins` **remplace** la liste par défaut, il
+faut donc y redonner toutes les origines voulues. Le fichier `config.json` est conservé lors
+d'une mise à jour. Voir [Configuration](#configuration).
 
 Pour désinstaller : double-cliquer sur `Uninstall.cmd` (présent dans `C:\Program Files\PrintBridge\` après installation, ou dans l'archive ZIP).
 
@@ -169,6 +192,26 @@ posPrint.printLines([
 
 ngx-pos-print détecte automatiquement l'agent Print Bridge et route l'impression. Si l'agent n'est pas installé, fallback automatique vers les autres drivers (USB/BT/Network/Window).
 
+Avec un agent qui exige l'appairage, la page doit s'associer une fois, depuis une origine
+autorisée. ngx-pos-print 1.3.0 le fait par `BridgePrintService` :
+
+```ts
+// Un jeton aléatoire de 32 caractères ou plus, généré une fois et conservé par la page.
+const token = localStorage.getItem('printBridgeToken') ?? crypto.randomUUID() + crypto.randomUUID();
+localStorage.setItem('printBridgeToken', token);
+
+const bridge = inject(BridgePrintService);
+bridge.setBridgeToken(token);
+if (await bridge.pairingStatus() === 'unpaired') {
+  await bridge.pairBridge(token);
+}
+```
+
+Le jeton peut aussi être donné dès la configuration (`providePosPrint({ driver: 'bridge',
+bridgeToken })`). Un échec d'impression porte alors `errorCode: 'pairing_required'` (s'associer
+à nouveau) ou `'agent_unreachable'` (installer ou démarrer l'agent). Une version plus ancienne
+de ngx-pos-print n'envoie pas de jeton : face à cet agent, elle ne voit plus aucune imprimante.
+
 ### Vanilla JavaScript (sans framework)
 
 Le dossier [`sdk-js/`](sdk-js/) contient un client autonome non-publié pour les apps non-Angular :
@@ -178,11 +221,27 @@ Le dossier [`sdk-js/`](sdk-js/) contient un client autonome non-publié pour les
   import { PrintBridge } from './sdk-js/index.js';
 
   const bridge = await PrintBridge.autodiscover();
+
+  // Jeton d'appairage : 32 caractères aléatoires ou plus, gardés d'une visite à l'autre.
+  let token = localStorage.getItem('printBridgeToken');
+  if (!token) {
+    token = crypto.randomUUID() + crypto.randomUUID();
+    await bridge.pair(token);            // POST /pair, une seule fois
+    localStorage.setItem('printBridgeToken', token);
+  }
+  bridge.setToken(token);                // envoyé ensuite dans X-Print-Bridge-Token
+
   await bridge.printText('Bonjour !', { cut: true });
 </script>
 ```
 
-Ouvre [`sdk-js/example.html`](sdk-js/example.html) dans Chrome pour une démo interactive.
+`health()` rend `pairingRequired` et, avec un jeton, `paired`, pour savoir s'il faut s'associer
+à nouveau ; `unpair()` retire l'association du jeton courant. Le jeton peut aussi être passé au
+constructeur : `new PrintBridge(base, { token })`.
+
+Ouvre [`sdk-js/example.html`](sdk-js/example.html) dans Chrome pour une démo interactive. La
+page doit être servie depuis une origine ajoutée à la liste de l'agent (par exemple
+`http://localhost:8080`), et s'associer avant de lister les imprimantes.
 
 > **HTTPS sans avertissement** : à l'installation, `install.ps1` enregistre une autorité racine privée « Print Bridge Local CA » dans le store racine Windows. Les navigateurs font ensuite confiance à `https://localhost:19101` sans rien afficher. Si tu utilises le binaire sans installeur, exécute `print-bridge.exe -cmd trust-ca` en admin.
 
@@ -191,6 +250,7 @@ Ouvre [`sdk-js/example.html`](sdk-js/example.html) dans Chrome pour une démo in
 ```http
 POST http://127.0.0.1:19100/print
 Content-Type: application/json
+X-Print-Bridge-Token: <jeton appairé>
 
 {
   "text": "Hello\nWorld",
@@ -205,21 +265,38 @@ Réponse :
 { "ok": true, "bytes": 42, "durationMs": 73 }
 ```
 
+Sans jeton connu, la réponse est `401 {"ok": false, "error": "pairing_required"}`. Un outil en
+ligne de commande, qui n'envoie pas d'en-tête `Origin`, ne peut pas s'appairer (`/pair` exige
+une origine autorisée) : il utilise le jeton local, lisible dans
+`C:\ProgramData\PrintBridge\local-token` par un compte qui a accès à ce dossier.
+
 ## API HTTP
 
 L'agent écoute sur deux ports :
 - **HTTP** : `http://127.0.0.1:19100`, pour les apps web servies en HTTP/localhost
 - **HTTPS** : `https://localhost:19101`, pour les apps web servies en HTTPS (Mixed Content)
 
-| Méthode | Endpoint | Description |
-|---|---|---|
-| `GET` | `/health` | Sonde de vie |
-| `GET` | `/printers` | Liste de toutes les imprimantes détectées |
-| `GET` | `/printers/{id}` | Détail d'une imprimante |
-| `GET` | `/printers/{id}/capabilities` | Ce que le pilote sait faire : formats, bacs, recto-verso, couleur, copies |
-| `POST` | `/print` | Soumettre un job (corps JSON `text` ou `raw` base64) |
-| `POST` | `/print/text?printerId=…` | Soumettre du texte brut (corps `text/plain`) |
-| `POST` | `/print-document` | Imprimer un document de page (A4 et assimilés), pages déjà rendues |
+Si l'un de ces ports est déjà tenu par un autre programme, l'agent se replie sur **19102** (HTTP)
+ou **19103** (HTTPS), et le journal le dit. Les clients sondent les quatre adresses dans l'ordre
+19101, 19100, 19103, 19102. Le repli ne vaut que pour les ports par défaut : un port choisi
+explicitement (`-port`, `-https-port` ou `config.json`) n'est jamais remplacé en silence. HTTP et
+HTTPS vivent chacun leur vie : un port HTTPS indisponible ou un certificat illisible n'arrête pas
+le HTTP, et l'agent ne s'arrête que s'il ne peut plus rien servir.
+
+| Méthode | Endpoint | Jeton | Description |
+|---|---|:---:|---|
+| `GET` | `/health` | non | Sonde de vie, version, `pairingRequired` ; `paired` si un jeton est envoyé |
+| `POST` | `/pair` | non | Appairer un jeton (corps `{"token": "…"}`), depuis une origine autorisée seulement |
+| `DELETE` | `/pair` | oui | Retirer l'appairage du jeton envoyé |
+| `GET` | `/printers` | oui | Liste de toutes les imprimantes détectées |
+| `GET` | `/printers/{id}` | oui | Détail d'une imprimante |
+| `GET` | `/printers/{id}/capabilities` | oui | Ce que le pilote sait faire : formats, bacs, recto-verso, couleur, copies |
+| `POST` | `/print` | oui | Soumettre un job (corps JSON `text` ou `raw` base64) |
+| `POST` | `/print/text?printerId=…` | oui | Soumettre du texte brut (corps `text/plain`) |
+| `POST` | `/print-document` | oui | Imprimer un document de page (A4 et assimilés), pages déjà rendues |
+
+Le jeton voyage dans l'en-tête `X-Print-Bridge-Token`. Voir
+[Sécurité : origines autorisées et appairage](#sécurité--origines-autorisées-et-appairage).
 
 ### Documents de page : remplacer la fenêtre d'impression
 
@@ -329,27 +406,71 @@ options d'une file sont gardées cinq minutes. Sans ces bornes, une file déclar
 l'imprimante est débranchée laisse `lpoptions` attendre, et l'agent attend avec lui : côté
 navigateur, cela se voit comme une recherche d'imprimantes qui tourne sans fin.
 
-### Appel depuis un site public : deux autorisations, pas une
+### Appel depuis un site public : trois autorisations, pas une
 
-Une page servie depuis un site public qui appelle une adresse locale se heurte à **deux** refus
-distincts, et il faut lever les deux. Le symptôme est le même dans les deux cas, une liste
+Une page servie depuis un site public qui appelle une adresse locale se heurte à **trois** refus
+distincts, et il faut lever les trois. Le symptôme est le même dans les trois cas, une liste
 d'imprimantes vide, alors que l'agent tourne et que l'imprimante est prête.
 
 **Du côté du site**, sa politique de sécurité de contenu doit déclarer les adresses de l'agent
-dans `connect-src`, en production comme ailleurs :
+dans `connect-src`, en production comme ailleurs, ports de repli compris :
 
 ```
 connect-src 'self' … http://127.0.0.1:19100 https://localhost:19101
                      http://127.0.0.1:19102 https://localhost:19103
 ```
 
-**Du côté de l'agent**, Chrome envoie un prévol portant l'en-tête
+**Du côté du navigateur**, Chrome envoie un prévol portant l'en-tête
 `Access-Control-Request-Private-Network` dès qu'une page publique vise une adresse locale. La
-réponse doit l'autoriser explicitement, ce que `withCORS` fait désormais. Autoriser ce prévol ne
-relâche rien de plus que le CORS déjà en place : c'est la même liste d'origines qui décide.
+réponse doit l'autoriser explicitement, ce que `withOriginGuard` fait, mais **seulement pour une
+origine de la liste de l'agent**. Pour les autres, le refus de Chrome est une protection de plus,
+et l'agent répond de toute façon `403 origin_not_allowed`.
 
-Ces deux refus ne se voient que dans la console du navigateur. Pour qui ne l'ouvre pas, la panne
+**Du côté de l'agent**, le site doit figurer dans `allowedOrigins` (voir
+[Configuration](#configuration)), puis s'appairer. Sans appairage, l'agent répond, mais
+`401 pairing_required` sur toute route qui touche aux imprimantes.
+
+Ces refus ne se voient que dans la console du navigateur. Pour qui ne l'ouvre pas, la panne
 est muette et ressemble à un problème d'imprimante.
+
+### Sécurité : origines autorisées et appairage
+
+L'agent n'écoute que sur `127.0.0.1`, mais **toute page ouverte sur le poste peut appeler
+`127.0.0.1`**. Sans garde, un site quelconque visité depuis la caisse pourrait lister les
+imprimantes, imprimer de faux tickets ou ouvrir le tiroir-caisse. Deux serrures s'y opposent,
+et il faut passer les deux.
+
+**1. La liste des origines autorisées, vérifiée par l'agent.** Le CORS seul ne protège rien
+ici : il empêche une page de *lire* la réponse, pas d'*envoyer* la requête, et un `POST /print`
+imprimerait quand même. L'agent refuse donc lui-même, avant tout effet, une requête dont
+l'en-tête `Origin` n'est pas dans la liste (`403 origin_not_allowed`). Un navigateur envoie
+toujours cet en-tête sur un appel d'une autre origine qui n'est pas un simple `GET`, et une page
+ne peut ni le retirer ni le falsifier. Seule exception : `GET /health` reste joignable par tous,
+il ne dit rien des imprimantes.
+
+Par défaut, la liste ne contient que l'application de production et le serveur de
+développement `http://localhost:4200`. L'ancien défaut, `*`, n'en est plus un : il reste possible
+en l'écrivant explicitement dans `config.json`, ce qui rouvre l'agent à tous les sites.
+
+**2. Le jeton d'appairage.** Chaque route qui lit les imprimantes ou imprime exige l'en-tête
+`X-Print-Bridge-Token`, sinon `401 pairing_required`. Le jeton est généré par la page elle-même
+(32 à 512 caractères imprimables, aléatoires) et enregistré une fois par `POST /pair`, accepté
+seulement depuis une origine autorisée : un site quelconque ne peut pas s'appairer lui-même.
+
+- L'agent ne garde que l'**empreinte SHA-256** du jeton, dans `pairings.json` : ce fichier ne
+  permet pas de se faire passer pour l'application.
+- Plusieurs jetons coexistent, un par profil de navigateur ou par application, jusqu'à 32 ;
+  au-delà, le plus ancien cède sa place.
+- Appairer deux fois le même jeton ne crée pas de doublon. `DELETE /pair` retire un jeton.
+- `GET /health` annonce `"pairingRequired": true`, et, si la requête porte un jeton,
+  `"paired": true` ou `false`. Un client n'envoie l'en-tête du jeton qu'à un agent qui l'annonce :
+  un agent plus ancien refuserait cet en-tête inconnu au prévol, et tout appel échouerait.
+
+**Le jeton local de l'icône tray.** L'icône de zone de notification n'est pas une page web et ne
+s'appaire pas. À son premier démarrage, l'agent écrit un jeton aléatoire dans `local-token`, dans
+son dossier (`C:\ProgramData\PrintBridge\`), qu'aucun site ne peut lire. Le tray le relit à
+chaque appel, ce qui couvre le cas où il démarre avant l'agent. Ce jeton ne se retire pas par
+`DELETE /pair`.
 
 ## Comment Print Bridge contourne le dialogue Windows
 
@@ -388,6 +509,52 @@ imprimer une page.
 
 ou double-clic sur `Uninstall.cmd` depuis l'archive de release.
 
+La désinstallation supprime aussi `C:\ProgramData\PrintBridge\`, donc `config.json` et les
+appairages : après une réinstallation, il faut redonner les origines ajoutées et chaque page
+s'appaire de nouveau. Une mise à jour, elle, les conserve.
+
+## Configuration
+
+L'agent part de ses valeurs par défaut, applique `config.json` puis la ligne de commande, qui
+l'emporte. Le fichier vit dans le dossier de l'agent : `C:\ProgramData\PrintBridge\` sous
+Windows, le dossier de cache de l'utilisateur (`print-bridge/`) ailleurs, ou celui de `-data`.
+Un champ absent garde sa valeur par défaut ; un fichier absent n'est pas une erreur, un fichier
+illisible est ignoré et signalé dans le journal.
+
+```json
+{
+  "allowedOrigins": ["https://caisse.example.com", "http://localhost:4200"],
+  "port": 19100,
+  "httpsPort": 19101
+}
+```
+
+| Champ | Option en ligne de commande | Effet |
+|---|---|---|
+| `allowedOrigins` | `-origins "a,b"` | Remplace la liste des pages web autorisées. `"*"` les autorise toutes, à éviter |
+| `port` | `-port` | Port HTTP ; fixé ainsi, il n'a plus de repli |
+| `httpsPort` | `-https-port` | Port HTTPS ; `-1` dans le fichier coupe le HTTPS, comme `-no-https` |
+
+Les origines sont comparées à l'en-tête `Origin` du navigateur, après mise en minuscules et
+retrait de la barre finale : `https://Caisse.example.com/` vaut `https://caisse.example.com`.
+La liste en vigueur est écrite dans le journal à chaque démarrage.
+
+Pour modifier `config.json` sans l'éditer à la main, sur un poste déjà installé :
+
+```powershell
+& "C:\Program Files\PrintBridge\print-bridge.exe" -cmd configure `
+    -origins "https://caisse.example.com,http://localhost:4200"
+Restart-Service PrintBridge
+```
+
+`-cmd configure` n'écrit que les options passées et garde les autres champs. Le service relit
+le fichier à chaque démarrage : il faut le redémarrer pour appliquer. C'est la commande
+qu'appelle `install.ps1` avec `-AllowedOrigins`, `-HttpPort` et `-HttpsPort`.
+
+Le même dossier contient aussi `pairings.json` (empreintes des jetons appairés) et `local-token`
+(jeton de l'icône tray). Supprimer `pairings.json` puis redémarrer l'agent oblige toutes les
+pages à s'appairer de nouveau.
+
 ## Embarquer l'agent dans une application
 
 Une application de bureau peut livrer `print-bridge.exe` avec elle et le lancer elle-même, sans
@@ -397,8 +564,13 @@ service ni droits administrateur :
 print-bridge.exe -data <dossier> -no-https -parent-pid <pid de l'application>
 ```
 
-- `-data` loge le journal et les certificats dans un dossier de l'utilisateur ; celui d'un service
-  installé, sous ProgramData, n'est pas toujours inscriptible.
+- `-data` loge le journal, les certificats, `config.json`, les appairages et le jeton local dans
+  un dossier de l'utilisateur ; celui d'un service installé, sous ProgramData, n'est pas toujours
+  inscriptible. Les appairages suivent ce dossier : changer de `-data` oblige à s'appairer de
+  nouveau.
+- `-origins "https://app.example.com"` fixe les pages autorisées pour ce lancement, si l'origine
+  de la page chargée par l'application n'est pas dans la liste par défaut. La page doit ensuite
+  s'appairer, comme dans un navigateur.
 - `-no-https` laisse le port 19101 : son certificat ne peut être approuvé sans administrateur, et
   `http://127.0.0.1:19100` suffit, les navigateurs l'acceptant depuis une page HTTPS.
 - `-parent-pid` arrête l'agent quand l'application se termine, plantage compris. Windows ne tue
@@ -434,7 +606,9 @@ restreint et l'installation échouerait.
 ### Confidentialité
 
 Print Bridge n'envoie aucune donnée hors de la machine. L'agent écoute uniquement sur
-`127.0.0.1`, et ne contacte le réseau local que pour trouver et joindre les imprimantes.
+`127.0.0.1`, et ne contacte le réseau local que pour trouver et joindre les imprimantes. Il ne
+sert que les pages des origines autorisées qui se sont appairées, et ne garde de leurs jetons
+qu'une empreinte.
 
 ### Publier une version
 
