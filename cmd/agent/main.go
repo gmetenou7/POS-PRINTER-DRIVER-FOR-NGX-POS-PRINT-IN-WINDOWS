@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
 	"github.com/gmetenou7/print-bridge/internal/config"
@@ -22,12 +21,16 @@ const (
 )
 
 func main() {
-	cmd := flag.String("cmd", "", "Commande : install | uninstall | start | stop | status | run | trust-ca | untrust-ca | gen-certs")
-	port := flag.Int("port", 0, "Forcer le port HTTP (défaut 19100)")
-	data := flag.String("data", "", "Dossier du journal et des certificats (défaut : dossier PrintBridge de ProgramData)")
+	cmd := flag.String("cmd", "", "Commande : install | uninstall | start | stop | status | run | trust-ca | untrust-ca | gen-certs | configure")
+	port := flag.Int("port", 0, "Forcer le port HTTP (défaut 19100, repli sur 19102 s'il est pris)")
+	httpsPort := flag.Int("https-port", 0, "Forcer le port HTTPS (défaut 19101, repli sur 19103 s'il est pris)")
+	origins := flag.String("origins", "", "Origines web autorisées, séparées par des virgules (remplace la liste de config.json)")
+	data := flag.String("data", "", "Dossier du journal, des certificats, de config.json et des associations (défaut : dossier PrintBridge de ProgramData)")
 	noHTTPS := flag.Bool("no-https", false, "Ne pas ouvrir le port HTTPS")
 	parentPID := flag.Int("parent-pid", 0, "S'arrêter quand ce processus se termine")
 	flag.Parse()
+
+	opts := options{port: *port, httpsPort: *httpsPort, origins: *origins, dataDir: *data, noHTTPS: *noHTTPS}
 
 	switch *cmd {
 	case "install":
@@ -62,11 +65,76 @@ func main() {
 	case "untrust-ca":
 		mustOK(tlsmgr.UntrustCA("Print Bridge Local CA"))
 		fmt.Println("CA Print Bridge supprimée du store racine Windows.")
+	case "configure":
+		configure(opts)
 	case "run":
 		runAsService()
 	default:
-		runConsole(*port, *data, *noHTTPS, *parentPID)
+		runConsole(opts, *parentPID)
 	}
+}
+
+// options sont les reglages passes en ligne de commande ; ils l'emportent sur config.json.
+type options struct {
+	port      int
+	httpsPort int
+	origins   string
+	dataDir   string
+	noHTTPS   bool
+}
+
+// loadConfig part des valeurs par defaut, applique config.json puis la ligne de commande.
+func loadConfig(o options) *config.Config {
+	cfg := config.Default()
+	if o.dataDir != "" {
+		cfg.UseDataDir(o.dataDir)
+	}
+	if err := cfg.LoadFile(); err != nil {
+		log.Printf("config.json ignoré : %v", err)
+	}
+	if o.port > 0 {
+		cfg.Port = o.port
+		cfg.PortFallback = false
+	}
+	if o.httpsPort > 0 {
+		cfg.HTTPSPort = o.httpsPort
+		cfg.HTTPSPortFallback = false
+	}
+	if o.origins != "" {
+		cfg.AllowedOrigins = config.ParseOrigins(o.origins)
+	}
+	if o.noHTTPS {
+		cfg.HTTPSPort = 0
+	}
+	return cfg
+}
+
+// configure ecrit les reglages de la ligne de commande dans config.json, que le service relit
+// a chaque demarrage : c'est ainsi que l'installeur ajoute une origine ou change un port.
+//
+//	print-bridge.exe -cmd configure -origins "https://app.example.com,http://localhost:4200"
+func configure(o options) {
+	cfg := config.Default()
+	if o.dataDir != "" {
+		cfg.UseDataDir(o.dataDir)
+	}
+	path := cfg.SettingsPath()
+	s, err := config.ReadSettings(path)
+	mustOK(err)
+	if o.origins != "" {
+		s.AllowedOrigins = config.ParseOrigins(o.origins)
+	}
+	if o.port > 0 {
+		s.Port = o.port
+	}
+	if o.httpsPort > 0 {
+		s.HTTPSPort = o.httpsPort
+	}
+	if o.noHTTPS {
+		s.HTTPSPort = -1
+	}
+	mustOK(config.WriteSettings(path, s))
+	fmt.Printf("Réglages écrits dans %s. Redémarre le service pour les appliquer.\n", path)
 }
 
 // runConsole lance l'agent au premier plan.
@@ -76,18 +144,8 @@ func main() {
 // dossier ProgramData d'un service installe n'etant pas toujours inscriptible ;
 // `-no-https` laisse le port HTTPS, dont le certificat ne peut etre approuve
 // sans administrateur ; `-parent-pid` arrete l'agent avec l'application.
-func runConsole(portOverride int, dataDir string, noHTTPS bool, parentPID int) {
-	cfg := config.Default()
-	if portOverride > 0 {
-		cfg.Port = portOverride
-	}
-	if dataDir != "" {
-		cfg.LogPath = filepath.Join(dataDir, "agent.log")
-		cfg.CertDir = filepath.Join(dataDir, "certs")
-	}
-	if noHTTPS {
-		cfg.HTTPSPort = 0
-	}
+func runConsole(o options, parentPID int) {
+	cfg := loadConfig(o)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -112,7 +170,7 @@ func runConsole(portOverride int, dataDir string, noHTTPS bool, parentPID int) {
 }
 
 func runAsService() {
-	cfg := config.Default()
+	cfg := loadConfig(options{})
 	if err := winsvc.RunService(serviceName, func(ctx context.Context) error {
 		return runner.Run(ctx, cfg)
 	}); err != nil {

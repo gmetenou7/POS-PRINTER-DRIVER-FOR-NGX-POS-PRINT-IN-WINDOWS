@@ -157,8 +157,19 @@ export interface AutodiscoverOptions {
 
 export declare class PrintBridge {
   readonly base: string;
+  /** Jeton d'association envoye dans X-Print-Bridge-Token. */
+  token: string | null;
 
-  constructor(base?: string);
+  constructor(base?: string, options?: { token?: string | null });
+
+  /** Fixe le jeton d'association. */
+  setToken(token: string | null): void;
+
+  /** POST /pair : associe ce jeton (32 caracteres ou plus), depuis une origine autorisee. */
+  pair(token?: string): Promise<{ ok: boolean; paired: boolean }>;
+
+  /** DELETE /pair : retire l'association du jeton courant. */
+  unpair(): Promise<{ ok: boolean; paired: boolean }>;
 
   /**
    * Probes the local agent on HTTPS first, then HTTP, across the
@@ -168,7 +179,7 @@ export declare class PrintBridge {
   static autodiscover(options?: AutodiscoverOptions): Promise<PrintBridge>;
 
   /** GET /health */
-  health(): Promise<{ ok: boolean; ts: number }>;
+  health(): Promise<{ ok: boolean; ts: number; pairingRequired?: boolean; paired?: boolean }>;
 
   /** GET /printers */
   listPrinters(): Promise<Printer[]>;

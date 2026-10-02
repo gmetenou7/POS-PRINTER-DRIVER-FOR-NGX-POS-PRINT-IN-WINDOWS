@@ -10,10 +10,47 @@ const PROBE_TARGETS = [
 ];
 
 const CACHE_KEY = 'printBridge.base';
+const TOKEN_HEADER = 'X-Print-Bridge-Token';
 
 export class PrintBridge {
-  constructor(base = DEFAULT_BASE) {
+  constructor(base = DEFAULT_BASE, { token = null } = {}) {
     this.base = base.replace(/\/+$/, '');
+    this.token = token;
+  }
+
+  /**
+   * Jeton d'association. L'agent n'ouvre ses imprimantes qu'a une page de la liste des
+   * origines autorisees, associee par `pair()` : sans cela, n'importe quel site ouvert sur le
+   * poste pourrait imprimer ou ouvrir le tiroir. Genere-le une fois (32 caracteres ou plus,
+   * aleatoires) et garde-le, par exemple dans localStorage.
+   */
+  setToken(token) {
+    this.token = token || null;
+  }
+
+  /** Associe ce jeton a l'agent (depuis une origine autorisee seulement). */
+  async pair(token = this.token) {
+    const r = await fetch(`${this.base}/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.ok === false) throw new Error(data.error || `pair ${r.status}`);
+    this.token = token;
+    return data;
+  }
+
+  /** Retire l'association de ce jeton. */
+  async unpair() {
+    const r = await fetch(`${this.base}/pair`, { method: 'DELETE', headers: this._headers() });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.ok === false) throw new Error(data.error || `unpair ${r.status}`);
+    return data;
+  }
+
+  _headers(extra = {}) {
+    return this.token ? { ...extra, [TOKEN_HEADER]: this.token } : extra;
   }
 
   /**
@@ -61,7 +98,7 @@ export class PrintBridge {
 
   /** Returns the array of detected printers. */
   async listPrinters() {
-    const r = await fetch(`${this.base}/printers`);
+    const r = await fetch(`${this.base}/printers`, { headers: this._headers() });
     if (!r.ok) throw new Error(`printers ${r.status}`);
     const body = await r.json();
     return body.printers || [];
@@ -107,7 +144,9 @@ export class PrintBridge {
    * for instance: it has no options to offer, and that is an answer rather than a failure.
    */
   async capabilities(printerId) {
-    const r = await fetch(`${this.base}/printers/${encodeURIComponent(printerId)}/capabilities`);
+    const r = await fetch(`${this.base}/printers/${encodeURIComponent(printerId)}/capabilities`, {
+      headers: this._headers(),
+    });
     if (!r.ok) return null;
     const body = await r.json();
     if (!body.ok || body.driverless || !body.capabilities) return null;
@@ -177,7 +216,7 @@ export class PrintBridge {
   async _post(path, body) {
     const r = await fetch(`${this.base}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this._headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
     });
     const data = await r.json().catch(() => ({}));

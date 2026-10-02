@@ -4,6 +4,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -22,6 +23,7 @@ import (
 	"github.com/gmetenou7/print-bridge/internal/backends/winspool"
 	"github.com/gmetenou7/print-bridge/internal/config"
 	"github.com/gmetenou7/print-bridge/internal/detect"
+	"github.com/gmetenou7/print-bridge/internal/pairing"
 	"github.com/gmetenou7/print-bridge/internal/printers"
 	"github.com/gmetenou7/print-bridge/internal/tlsmgr"
 )
@@ -34,6 +36,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	defer closeLog()
 
 	log.Printf("Print Bridge, démarrage sur %s:%d", cfg.BindAddr, cfg.Port)
+	log.Printf("origines autorisées : %v", cfg.AllowedOrigins)
+
+	pairs, err := pairing.Open(cfg.DataDir)
+	if err != nil {
+		return fmt.Errorf("associations : %w", err)
+	}
 
 	reg := printers.NewRegistry()
 
@@ -43,33 +51,65 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	// Boucle de re-scan (plug-and-play léger : polling toutes les N secondes).
 	go detectLoop(ctx, reg, time.Duration(cfg.DetectInterval)*time.Second)
 
-	srv := api.NewServer(cfg, reg, printJob)
+	return serve(ctx, cfg, api.NewServer(cfg, reg, printJob, pairs))
+}
 
+// serve ouvre les ports et sert jusqu'a l'arret demande.
+//
+// HTTP et HTTPS vivent chacun leur vie : un port HTTPS pris, ou un certificat illisible, ne
+// doit pas emporter le HTTP, et inversement. L'agent ne s'arrete que s'il ne sert plus rien.
+func serve(ctx context.Context, cfg *config.Config, srv *api.Server) error {
 	errCh := make(chan error, 2)
-	go func() { errCh <- srv.ListenAndServe() }()
+	running := 0
 
-	// HTTPS uses the locally-issued cert; failure here is non-fatal so the
-	// agent stays useful via plain HTTP even before the CA is trusted.
-	httpsStarted, httpsErr := startHTTPS(cfg, srv, errCh)
-	if httpsErr != nil {
-		log.Printf("HTTPS désactivé : %v", httpsErr)
-	} else if httpsStarted {
-		log.Printf("HTTPS prêt sur https://%s:%d", cfg.BindAddr, cfg.HTTPSPort)
+	if ln, err := listen(cfg.BindAddr, cfg.Port, cfg.PortFallback, config.FallbackPort); err != nil {
+		log.Printf("HTTP désactivé : %v", err)
+	} else {
+		running++
+		log.Printf("HTTP prêt sur http://%s", ln.Addr())
+		go func() { errCh <- fmt.Errorf("HTTP : %w", srv.Serve(ln)) }()
 	}
 
-	select {
-	case <-ctx.Done():
-		log.Println("arrêt demandé")
-		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(shutCtx)
-		return ctx.Err()
-	case err := <-errCh:
-		if err != nil && err != http.ErrServerClosed {
-			return fmt.Errorf("erreur serveur : %w", err)
+	if started, err := startHTTPS(cfg, srv, errCh); err != nil {
+		log.Printf("HTTPS désactivé : %v", err)
+	} else if started {
+		running++
+	}
+
+	if running == 0 {
+		return fmt.Errorf("aucun port n'a pu être ouvert")
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("arrêt demandé")
+			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = srv.Shutdown(shutCtx)
+			return ctx.Err()
+		case err := <-errCh:
+			if errors.Is(err, http.ErrServerClosed) {
+				return nil
+			}
+			running--
+			log.Printf("serveur arrêté : %v", err)
+			if running == 0 {
+				return fmt.Errorf("erreur serveur : %w", err)
+			}
 		}
-		return nil
 	}
+}
+
+// listen ouvre port, ou fallback quand port est le defaut et qu'un autre programme le tient.
+// Les clients sondent les deux, dans cet ordre.
+func listen(bind string, port int, allowFallback bool, fallback int) (net.Listener, error) {
+	ln, err := net.Listen("tcp", net.JoinHostPort(bind, strconv.Itoa(port)))
+	if err == nil || !allowFallback || fallback <= 0 || fallback == port {
+		return ln, err
+	}
+	log.Printf("port %d indisponible (%v), repli sur %d", port, err, fallback)
+	return net.Listen("tcp", net.JoinHostPort(bind, strconv.Itoa(fallback)))
 }
 
 func startHTTPS(cfg *config.Config, srv *api.Server, errCh chan<- error) (bool, error) {
@@ -81,7 +121,12 @@ func startHTTPS(cfg *config.Config, srv *api.Server, errCh chan<- error) (bool, 
 	if err != nil {
 		return false, err
 	}
-	go func() { errCh <- srv.ListenAndServeTLS(leafCert, leafKey) }()
+	ln, err := listen(cfg.BindAddr, cfg.HTTPSPort, cfg.HTTPSPortFallback, config.FallbackHTTPSPort)
+	if err != nil {
+		return false, err
+	}
+	log.Printf("HTTPS prêt sur https://%s", ln.Addr())
+	go func() { errCh <- fmt.Errorf("HTTPS : %w", srv.ServeTLS(ln, leafCert, leafKey)) }()
 	return true, nil
 }
 

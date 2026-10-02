@@ -2,6 +2,10 @@
 // in the Windows notification area. The agent itself runs in session 0
 // (as a Windows service) and exposes its API on localhost; this tray
 // talks to that API like any other client.
+//
+// Les routes de l'agent exigent un jeton d'association. La barre n'est pas une page web et ne
+// s'associe pas : elle lit le jeton local que l'agent ecrit dans son dossier (ProgramData),
+// qu'un site web ne peut pas lire.
 package main
 
 import (
@@ -20,21 +24,24 @@ import (
 	"time"
 
 	"fyne.io/systray"
+
+	"github.com/gmetenou7/print-bridge/internal/config"
+	"github.com/gmetenou7/print-bridge/internal/pairing"
 )
 
 var (
-	mu        sync.Mutex
+	mu          sync.Mutex
 	currentBase string
-	healthy   atomic.Bool
-	printers  atomic.Value // []printer
+	healthy     atomic.Bool
+	printers    atomic.Value // []printer
 
-	mTitle       *systray.MenuItem
-	mPrintersHdr *systray.MenuItem
+	mTitle         *systray.MenuItem
+	mPrintersHdr   *systray.MenuItem
 	mPrintersItems []*systray.MenuItem
-	mTest        *systray.MenuItem
-	mLogs        *systray.MenuItem
-	mCerts       *systray.MenuItem
-	mQuit        *systray.MenuItem
+	mTest          *systray.MenuItem
+	mLogs          *systray.MenuItem
+	mCerts         *systray.MenuItem
+	mQuit          *systray.MenuItem
 )
 
 type printer struct {
@@ -150,6 +157,7 @@ func refresh() {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/printers", nil)
+	withLocalToken(req)
 	resp, err := newClient().Do(req)
 	if err != nil {
 		setOffline()
@@ -232,6 +240,7 @@ func testPrint() {
 	body := strings.NewReader(`{"text":"Test Print Bridge\n` + time.Now().Format("2006-01-02 15:04:05") + `","cut":true}`)
 	req, _ := http.NewRequest(http.MethodPost, base+"/print", body)
 	req.Header.Set("Content-Type", "application/json")
+	withLocalToken(req)
 	resp, err := newClient().Do(req)
 	if err != nil {
 		return
@@ -241,6 +250,14 @@ func testPrint() {
 }
 
 // ---- Helpers -------------------------------------------------------------
+
+// withLocalToken joint le jeton local, relu a chaque appel : l'agent le cree a son premier
+// demarrage, parfois apres la barre.
+func withLocalToken(req *http.Request) {
+	if token := pairing.ReadLocalToken(config.DefaultDataDir()); token != "" {
+		req.Header.Set(pairing.Header, token)
+	}
+}
 
 func newClient() *http.Client {
 	return &http.Client{

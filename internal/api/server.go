@@ -10,8 +10,12 @@
 //	POST /print                       , submit a print job (JSON body)
 //	POST /print-document              , print rendered pages (A4 and the like)
 //	POST /print/text                  , submit plain text, server builds ESC/POS
+//	POST /pair, DELETE /pair          , associe ou dissocie le jeton d'une application
 //
-// CORS is open by default because the agent only listens on localhost.
+// L'agent n'ecoute que sur localhost, mais toute page ouverte sur le poste peut appeler
+// localhost. Deux serrures le gardent donc : la liste des origines autorisees, verifiee par
+// l'agent lui-meme et pas seulement par le navigateur, et le jeton d'association, exige par
+// chaque route qui lit les imprimantes ou imprime. Voir security.go.
 package api
 
 import (
@@ -31,6 +35,7 @@ import (
 	"github.com/gmetenou7/print-bridge/internal/buildinfo"
 	"github.com/gmetenou7/print-bridge/internal/config"
 	"github.com/gmetenou7/print-bridge/internal/escpos"
+	"github.com/gmetenou7/print-bridge/internal/pairing"
 	"github.com/gmetenou7/print-bridge/internal/printers"
 )
 
@@ -41,22 +46,25 @@ type Server struct {
 	cfg     *config.Config
 	reg     *printers.Registry
 	doPrint PrintFunc
+	pairs   *pairing.Store
+	origins originSet
 	handler http.Handler
 	http    *http.Server
 	https   *http.Server
 }
 
-func NewServer(cfg *config.Config, reg *printers.Registry, doPrint PrintFunc) *Server {
-	s := &Server{cfg: cfg, reg: reg, doPrint: doPrint}
+func NewServer(cfg *config.Config, reg *printers.Registry, doPrint PrintFunc, pairs *pairing.Store) *Server {
+	s := &Server{cfg: cfg, reg: reg, doPrint: doPrint, pairs: pairs, origins: newOriginSet(cfg.AllowedOrigins)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
-	mux.HandleFunc("/printers", s.handlePrinters)
-	mux.HandleFunc("/printers/", s.handlePrinterByID)
-	mux.HandleFunc("/print", s.handlePrint)
-	mux.HandleFunc("/print-document", s.handlePrintDocument)
-	mux.HandleFunc("/print/text", s.handlePrintText)
+	mux.HandleFunc("/pair", s.handlePair)
+	mux.HandleFunc("/printers", s.requireToken(s.handlePrinters))
+	mux.HandleFunc("/printers/", s.requireToken(s.handlePrinterByID))
+	mux.HandleFunc("/print", s.requireToken(s.handlePrint))
+	mux.HandleFunc("/print-document", s.requireToken(s.handlePrintDocument))
+	mux.HandleFunc("/print/text", s.requireToken(s.handlePrintText))
 	mux.HandleFunc("/", s.handleRoot)
-	s.handler = withCORS(cfg.AllowedOrigins, mux)
+	s.handler = s.withOriginGuard(mux)
 
 	s.http = &http.Server{
 		Addr:              net.JoinHostPort(cfg.BindAddr, strconv.Itoa(cfg.Port)),
@@ -73,13 +81,19 @@ func NewServer(cfg *config.Config, reg *printers.Registry, doPrint PrintFunc) *S
 	return s
 }
 
-func (s *Server) ListenAndServe() error { return s.http.ListenAndServe() }
+// Handler rend la chaine complete (garde d'origine, CORS, routes), pour les tests.
+func (s *Server) Handler() http.Handler { return s.handler }
 
-func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
+// Serve sert le HTTP sur un port deja ouvert : le runner ouvre lui-meme ses ports pour savoir
+// tout de suite lequel est pris, et se replier sans attendre.
+func (s *Server) Serve(ln net.Listener) error { return s.http.Serve(ln) }
+
+// ServeTLS sert le HTTPS sur un port deja ouvert.
+func (s *Server) ServeTLS(ln net.Listener, certFile, keyFile string) error {
 	if s.https == nil {
 		return http.ErrServerClosed
 	}
-	return s.https.ListenAndServeTLS(certFile, keyFile)
+	return s.https.ServeTLS(ln, certFile, keyFile)
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
@@ -98,12 +112,21 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service":   "print-bridge",
 		"version":   buildinfo.Version,
-		"endpoints": []string{"/health", "/printers", "/printers/{id}/capabilities", "/print", "/print/text", "/print-document"},
+		"endpoints": []string{"/health", "/pair", "/printers", "/printers/{id}/capabilities", "/print", "/print/text", "/print-document"},
 	})
 }
 
+// handleHealth reste ouvert : c'est la sonde qui trouve l'agent. Il ne dit rien des imprimantes.
+//
+// `pairingRequired` annonce aux clients que cet agent exige un jeton : un agent plus ancien ne
+// le rend pas, et un client ne doit alors pas envoyer l'en-tete du jeton, que l'ancien agent
+// refuserait au prevol. Avec un jeton en en-tete, `paired` dit s'il est associe.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "ts": time.Now().Unix(), "version": buildinfo.Version})
+	body := map[string]any{"ok": true, "ts": time.Now().Unix(), "version": buildinfo.Version, "pairingRequired": true}
+	if token := r.Header.Get(pairing.Header); token != "" {
+		body["paired"] = s.pairs.Valid(token)
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) handlePrinters(w http.ResponseWriter, r *http.Request) {
@@ -563,53 +586,4 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeErr(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]any{"ok": false, "error": msg})
-}
-
-func withCORS(allowed []string, next http.Handler) http.Handler {
-	origin := "*"
-	if len(allowed) > 0 && !contains(allowed, "*") {
-		origin = strings.Join(allowed, ", ")
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Max-Age", "600")
-
-		// Acces au reseau local (Private Network Access).
-		//
-		// Une page servie depuis un site public qui appelle une adresse locale, 127.0.0.1 ou
-		// localhost, declenche chez Chrome un prevol portant l'en-tete
-		// Access-Control-Request-Private-Network. Si la reponse ne l'autorise pas
-		// explicitement, la requete est refusee, et la page ne voit qu'un echec reseau sans
-		// cause lisible.
-		//
-		// C'est exactement la difference entre un poste de developpement, ou la page vient
-		// deja de localhost et n'est donc pas un site public, et une application deployee en
-		// HTTPS : la meme installation cesse de repondre sans que rien n'ait change sur la
-		// machine. Le cas s'observe comme « aucune imprimante pilotee par ce poste » alors
-		// que l'agent tourne.
-		//
-		// Autoriser ce prevol ne relache rien de plus que le CORS deja en place : c'est la
-		// meme liste d'origines qui decide, cet en-tete ne fait que lever un refus
-		// supplementaire propre aux adresses locales.
-		if r.Header.Get("Access-Control-Request-Private-Network") == "true" {
-			w.Header().Set("Access-Control-Allow-Private-Network", "true")
-		}
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func contains(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }

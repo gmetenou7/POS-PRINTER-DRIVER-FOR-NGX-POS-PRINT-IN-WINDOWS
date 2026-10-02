@@ -5,10 +5,17 @@
 #
 # Usage : clic droit > Exécuter avec PowerShell (en admin)
 #         ou      : powershell -ExecutionPolicy Bypass -File install.ps1
+#
+# Réglages facultatifs, écrits dans %ProgramData%\PrintBridge\config.json (conservé aux mises à jour) :
+#   -AllowedOrigins "https://app.example.com,http://localhost:4200"  pages web autorisées
+#   -HttpPort 19100 -HttpsPort 19101                                 ports d'écoute
 
 [CmdletBinding()]
 param(
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [string]$AllowedOrigins = "",
+    [int]$HttpPort = 0,
+    [int]$HttpsPort = 0
 )
 
 # Sorties en UTF-8, pour que l'installeur qui lit ce script par un tube recoive des accents
@@ -105,6 +112,15 @@ Write-Host "Enregistrement du service Windows..." -ForegroundColor Cyan
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Échec d'enregistrement du service." -ForegroundColor Red
     exit 1
+}
+
+if ($AllowedOrigins -or $HttpPort -gt 0 -or $HttpsPort -gt 0) {
+    Write-Host "Écriture des réglages (origines autorisées, ports)..." -ForegroundColor Cyan
+    $cfgArgs = @("-cmd", "configure")
+    if ($AllowedOrigins) { $cfgArgs += @("-origins", $AllowedOrigins) }
+    if ($HttpPort -gt 0) { $cfgArgs += @("-port", "$HttpPort") }
+    if ($HttpsPort -gt 0) { $cfgArgs += @("-https-port", "$HttpsPort") }
+    & $Exe @cfgArgs
 }
 
 Write-Host "Génération et installation du certificat racine..." -ForegroundColor Cyan

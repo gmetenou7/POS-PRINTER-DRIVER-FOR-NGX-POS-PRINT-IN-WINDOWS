@@ -7,6 +7,12 @@ import (
 	"path/filepath"
 )
 
+// DefaultDataDir est le dossier de l'agent : journal, certificats, reglages et associations.
+// La barre de notification le lit aussi, pour y trouver le jeton local.
+func DefaultDataDir() string {
+	return filepath.Join(cacheDir(), "print-bridge")
+}
+
 func defaultLogPath() string {
 	return filepath.Join(cacheDir(), "print-bridge", "agent.log")
 }
